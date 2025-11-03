@@ -4,6 +4,7 @@ use std::process::Command;
 
 use crate::config::{config_file, QemuConfig};
 
+/// TODO: Currently the debug port is fixed at 1234. It should be adaptive or configurable.
 pub fn exec_command(name: String, debug: bool) -> Result<()> {
     let config_path = config_file(&name)?;
     if !config_path.exists() {
