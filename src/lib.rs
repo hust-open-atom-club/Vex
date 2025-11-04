@@ -13,27 +13,12 @@ use commands::{exec_command, list_command, remove_command, rename_command, save_
 /// Main application logic
 pub fn run() -> Result<()> {
     let vex = Vex::parse();
-
     match vex {
-        Vex::Save {
-            force,
-            name,
-            desc,
-            qemu_bin,
-            qemu_args,
-        } => save_command(force, name, desc, qemu_bin, qemu_args),
-
-        Vex::Exec { name, debug } => exec_command(name, debug),
-
-        Vex::Rm { name } => remove_command(name),
-
-        Vex::List => list_command(),
-
-        Vex::Rename {
-            desc,
-            force,
-            old_name,
-            new_name,
-        } => rename_command(desc, force, old_name, new_name),
+        Vex::Exec(args) => exec_command(args.name, args.debug),
+        Vex::List(_) => list_command(),
+        Vex::Rm(args) => remove_command(args.name),
+        Vex::Rename(args) => rename_command(args.desc, args.force, args.old_name, args.new_name),
+        Vex::Save(args) => save_command(args.force, args.name, args.desc, args.qemu_bin, args.qemu_args),
     }
+
 }
