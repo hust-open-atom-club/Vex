@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::Args;
 use std::fs;
 
 use crate::config::config_file;
