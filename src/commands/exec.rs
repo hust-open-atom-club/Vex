@@ -39,9 +39,6 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
     // Print startup message
     print_startup_message(&name, &config, &exec_args, debug, full);
 
-    println!();
-    println!();
-
     let status = Command::new(&config.qemu_bin)
         .args(&exec_args)
         .status()
