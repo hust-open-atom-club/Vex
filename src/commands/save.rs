@@ -1,8 +1,28 @@
 use anyhow::{Context, Result};
+use clap::Args;
 use std::fs;
 
 use crate::config::{config_file, QemuConfig};
 use crate::utils::io::{prompt_user, prompt_user_default_no};
+
+#[derive(Args)]
+#[clap(about = "Save QEMU configuration")]
+pub struct SaveArgs {
+    #[arg(help = "Configuration name for later reference")]
+    pub name: String,
+
+    #[arg(help = "Path to the QEMU executable (e.g., qemu-system-x86_64)")]
+    pub qemu_bin: String,
+
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, help = "QEMU startup arguments")]
+    pub qemu_args: Vec<String>,
+
+    #[arg(short = 'd', long = "desc", help = "Optional description for the configuration")]
+    pub desc: Option<String>,
+
+    #[arg(short = 'f', long = "force", help = "Force save without confirmation if configuration exists")]
+    pub force: bool,
+}
 
 pub fn save_command(
     force: bool,

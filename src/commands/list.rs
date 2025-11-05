@@ -1,7 +1,12 @@
 use anyhow::{Context, Result};
+use clap::Args;
 use std::fs;
 
 use crate::config::{config_dir, QemuConfig};
+
+#[derive(Args)]
+#[clap(about = "List all saved QEMU configurations")]
+pub struct ListArgs;
 
 pub fn list_command() -> Result<()> {
     let dir = config_dir()?;
