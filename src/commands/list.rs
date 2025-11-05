@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 
-use crate::config::{config_dir, QemuConfig};
+use crate::config::{QemuConfig, config_dir};
 
 #[derive(Args)]
 #[clap(about = "List all saved QEMU configurations")]

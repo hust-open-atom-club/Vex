@@ -3,7 +3,7 @@ use clap::Args;
 use std::fs;
 use std::process::Command;
 
-use crate::config::{config_file, QemuConfig};
+use crate::config::{QemuConfig, config_file};
 
 #[derive(Args)]
 #[clap(about = "Execute a saved QEMU configuration")]
@@ -11,10 +11,18 @@ pub struct ExecArgs {
     #[arg(help = "Configuration name to execute")]
     pub name: String,
 
-    #[arg(short = 'd', long = "debug", help = "Start QEMU in debug mode (GDB server on port 1234)")]
+    #[arg(
+        short = 'd',
+        long = "debug",
+        help = "Start QEMU in debug mode (GDB server on port 1234)"
+    )]
     pub debug: bool,
 
-    #[arg(short = 'f', long = "full", help = "Show full QEMU command line arguments")]
+    #[arg(
+        short = 'f',
+        long = "full",
+        help = "Show full QEMU command line arguments"
+    )]
     pub full: bool,
 }
 
@@ -22,11 +30,15 @@ pub struct ExecArgs {
 pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
     let config_path = config_file(&name)?;
     if !config_path.exists() {
-        anyhow::bail!("Configuration '{}' does not exist. Create it first with 'vex save'", name);
+        anyhow::bail!(
+            "Configuration '{}' does not exist. Create it first with 'vex save'",
+            name
+        );
     }
 
     let config_json = fs::read_to_string(&config_path).context("Failed to read config file")?;
-    let config: QemuConfig = serde_json::from_str(&config_json).context("Failed to deserialize configuration")?;
+    let config: QemuConfig =
+        serde_json::from_str(&config_json).context("Failed to deserialize configuration")?;
 
     let mut exec_args = config.args.clone();
 
@@ -45,14 +57,23 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
         .with_context(|| format!("Failed to execute QEMU: {}", config.qemu_bin))?;
 
     if !status.success() {
-        anyhow::bail!("QEMU execution failed with exit code: {}", status.code().unwrap_or(-1));
+        anyhow::bail!(
+            "QEMU execution failed with exit code: {}",
+            status.code().unwrap_or(-1)
+        );
     }
 
     Ok(())
 }
 
 /// Print a user-friendly startup message
-fn print_startup_message(name: &str, config: &QemuConfig, args: &[String], debug: bool, full: bool) {
+fn print_startup_message(
+    name: &str,
+    config: &QemuConfig,
+    args: &[String],
+    debug: bool,
+    full: bool,
+) {
     // Build the header
     let header = if let Some(desc) = &config.desc {
         format!("Starting configuration '{}' ({})", name, desc)

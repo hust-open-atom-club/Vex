@@ -8,7 +8,7 @@ pub fn prompt_user() -> Result<bool> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
-    
+
     // For debug parameter prompt: default is yes (Y/n)
     // For overwrite prompt: default is no (y/N)
     // This function handles the "Y/n" case (default yes)
@@ -20,7 +20,7 @@ pub fn prompt_user_default_no() -> Result<bool> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
-    
+
     // For overwrite prompts: only explicit "y" or "yes" returns true
     Ok(input == "y" || input == "yes")
 }

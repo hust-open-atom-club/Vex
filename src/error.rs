@@ -14,7 +14,9 @@ impl fmt::Display for VexError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VexError::ConfigNotFound(name) => write!(f, "Configuration '{}' not found", name),
-            VexError::ConfigAlreadyExists(name) => write!(f, "Configuration '{}' already exists", name),
+            VexError::ConfigAlreadyExists(name) => {
+                write!(f, "Configuration '{}' already exists", name)
+            }
             VexError::InvalidConfig(msg) => write!(f, "Invalid configuration: {}", msg),
             VexError::IoError(err) => write!(f, "IO error: {}", err),
             VexError::SerializationError(err) => write!(f, "Serialization error: {}", err),
