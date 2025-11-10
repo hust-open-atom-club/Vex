@@ -13,7 +13,7 @@ use commands::{exec_command, list_command, remove_command, rename_command, save_
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Exec(args) => exec_command(args.name, args.debug, args.full),
+        Commands::Exec(args) => exec_command(args.name, args.params, args.debug, args.full),
         Commands::List(_) => list_command(),
         Commands::Rm(args) => remove_command(args.name),
         Commands::Rename(args) => {
