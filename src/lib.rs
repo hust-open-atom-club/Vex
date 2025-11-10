@@ -7,7 +7,9 @@ use anyhow::Result;
 use clap::Parser;
 
 use commands::{Cli, Commands};
-use commands::{exec_command, list_command, remove_command, rename_command, save_command};
+use commands::{
+    exec_command, list_command, print_command, remove_command, rename_command, save_command,
+};
 
 /// Main application logic
 pub fn run() -> Result<()> {
@@ -15,6 +17,7 @@ pub fn run() -> Result<()> {
     match cli.command {
         Commands::Exec(args) => exec_command(args.name, args.debug, args.full),
         Commands::List(_) => list_command(),
+        Commands::Print(args) => print_command(args.name),
         Commands::Rm(args) => remove_command(args.name),
         Commands::Rename(args) => {
             rename_command(args.desc, args.force, args.old_name, args.new_name)
