@@ -4,6 +4,17 @@ Vex is a QEMU auxiliary command-line tool that addresses three core pain points:
 
 It provides a Docker-like convenient experience, helping users quickly launch full-system simulation environments, suitable for embedded development, firmware development, operating system development, and other scenarios.
 
+# Configuration
+
+## VEX_CONFIG_DIR
+
+Vex supports custom configuration storage location through the `VEX_CONFIG_DIR` environment variable.
+
+- If `VEX_CONFIG_DIR` is set: Vex will save and load configurations from the specified directory
+- If `VEX_CONFIG_DIR` is not set: Vex uses `<user_home_dir>/.vex/configs` as the default storage location
+
+This allows for flexible configuration management across different environments and use cases.
+
 # Roadmap
 
 ## Phase 1: Building Basic Command Capabilities
