@@ -18,7 +18,7 @@ use commands::{
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Exec(args) => exec_command(args.name, args.debug, args.full),
+        Commands::Exec(args) => exec_command(args.name, args.params, args.debug, args.full),
         Commands::List(_) => list_command(),
         Commands::Print(args) => print_command(args.name),
         Commands::Rm(args) => remove_command(args.name),
