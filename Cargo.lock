@@ -72,9 +72,15 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "clap"
+<<<<<<< HEAD
 version = "4.5.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6088f3ae8c3608d19260cd7445411865a485688711b78b5be70d78cd96136f83"
+=======
+version = "4.5.53"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9e340e012a1bf4935f5282ed1436d1489548e8f72308207ea5df0e23d2d03f8"
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -82,9 +88,15 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
+<<<<<<< HEAD
 version = "4.5.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22a7ef7f676155edfb82daa97f99441f3ebf4a58d5e32f295a56259f1b6facc8"
+=======
+version = "4.5.53"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d76b5d13eaa18c901fd2f7fca939fefe3a0727a953561fefdf3b2922b8569d00"
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 dependencies = [
  "anstream",
  "anstyle",
@@ -138,6 +150,36 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "errno"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "escargot"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11c3aea32bc97b500c9ca6a72b768a26e558264303d101d3409cf6d57a9ed0cf"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "fastrand"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 name = "getrandom"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -168,9 +210,9 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "libc"
-version = "0.2.177"
+version = "0.2.178"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
+checksum = "37c93d8daa9d8a012fd8ab92f088405fb202ea0b6ab73ee2482ae66af4f42091"
 
 [[package]]
 name = "libredox"
@@ -183,6 +225,21 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "linux-raw-sys"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
+
+[[package]]
+name = "log"
+version = "0.4.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+
+[[package]]
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -230,6 +287,51 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "regex"
+version = "1.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843bc0191f75f3e22651ae5f1e72939ab2f72a4bc30fa80a066bd66edefc24d4"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
+
+[[package]]
+name = "rustix"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd15f8a2c5551a84d56efdc1cd049089e409ac19a3072d5037a17fd70719ff3e"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -286,9 +388,15 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "syn"
+<<<<<<< HEAD
 version = "2.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b09a44accad81e1ba1cd74a32461ba89dee89095ba17b32f5d03683b1b1fc2a0"
+=======
+version = "2.0.111"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "390cc9a294ab71bdb1aa2e99d13be9c753cd2d7bd6560c77118597410c4d2e87"
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 dependencies = [
  "proc-macro2",
  "quote",
@@ -296,6 +404,22 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "tempfile"
+version = "3.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d31c77bdf42a745371d260a26ca7163f1e0924b64afa0b688e61b5a9fa02f16"
+dependencies = [
+ "fastrand",
+ "getrandom 0.3.4",
+ "once_cell",
+ "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -345,6 +469,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "wasip2"
+version = "1.0.1+wasi-0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0562428422c63773dad2c345a1882263bbf4d65cf3f42e90921f787ef5ad58e7"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "windows-link"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
 name = "windows-sys"
 version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -481,4 +623,8 @@ checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+<<<<<<< HEAD
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+=======
+checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
+>>>>>>> d32e6cd (refactor(exec): use regex for parameter substitution and add tests)
