@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
+use regex::Regex;
 use std::fs;
 use std::process::Command;
 
@@ -41,6 +42,9 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
         serde_json::from_str(&config_json).context("Failed to deserialize configuration")?;
 
     let mut exec_args = config.args.clone();
+
+    // Substitute parameters in args
+    exec_args = substitute_params(&exec_args);
 
     if debug {
         // Add debug parameters
@@ -95,4 +99,17 @@ fn print_startup_message(
         println!("  GDB server: localhost:1234");
         println!("\n💡 You can connect with: gdb -ex 'target remote localhost:1234'");
     }
+}
+
+/// Substitute parameters in arguments using regex
+pub(crate) fn substitute_params(args: &[String]) -> Vec<String> {
+    let re = Regex::new(r"\$\{([^}]+)\}").unwrap();
+    args.iter()
+        .map(|arg| {
+            re.replace_all(arg, |caps: &regex::Captures| {
+                std::env::var(&caps[1]).unwrap_or_else(|_| format!("${{{}}}", &caps[1]))
+            })
+            .to_string()
+        })
+        .collect()
 }
