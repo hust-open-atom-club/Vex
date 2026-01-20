@@ -4,17 +4,16 @@ use std::path::PathBuf;
 
 /// Get Vex config file storage directory (default ~/.vex/configs)
 pub fn config_dir() -> Result<PathBuf> {
-    let config_dir_env = std::env::var("VEX_CONFIG_DIR");
-    if config_dir_env.is_ok() {
-        Ok(PathBuf::from(config_dir_env.unwrap()))
-    } else {
-        let home = dirs::home_dir().context("Failed to get user home directory")?;
-        let dir = home.join(".vex").join("configs");
-        if !dir.exists() {
-            fs::create_dir_all(&dir).context("Failed to create config directory")?;
+    let dir = match std::env::var("VEX_CONFIG_DIR") {
+        Ok(path) if !path.is_empty() => PathBuf::from(path),
+        _ => {
+            let home = dirs::home_dir().context("Failed to get user home directory")?;
+            home.join(".vex").join("configs")
         }
-        Ok(dir)
-    }
+    };
+
+    fs::create_dir_all(&dir).context("Failed to create config directory")?;
+    Ok(dir)
 }
 
 /// Get path to the config file for a given name
