@@ -50,10 +50,10 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
                 println!("   Configuration saved with QEMU {}", saved_ver);
                 println!("   Current system has QEMU {}", curr);
                 println!("   Some features might not work as expected.\n");
-            },
+            }
             None => {
                 println!("WARNING: Could not detect current QEMU version.\n");
-            },
+            }
             _ => {} // Versions match, all good
         }
     }

@@ -78,7 +78,7 @@ pub fn save_command(
     }
     // Get QEMU version
     let qemu_version = get_qemu_version(&qemu_bin);
-    
+
     // Optional: Print a log to inform the user
     if let Some(v) = &qemu_version {
         println!("Detected QEMU version: {}", v);

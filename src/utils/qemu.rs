@@ -3,10 +3,7 @@ use std::process::Command;
 
 /// Get QEMU version string (e.g., "8.2.0")
 pub fn get_qemu_version(binary: &str) -> Option<String> {
-    let output = Command::new(binary)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new(binary).arg("--version").output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -18,6 +15,5 @@ pub fn get_qemu_version(binary: &str) -> Option<String> {
     // We capture the first "number.number.number" pattern
     let re = Regex::new(r"version (\d+\.\d+\.\d+)").ok()?;
 
-    re.captures(&output_str)
-        .map(|caps| caps[1].to_string())
+    re.captures(&output_str).map(|caps| caps[1].to_string())
 }
