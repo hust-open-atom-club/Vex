@@ -9,4 +9,6 @@ pub struct QemuConfig {
     pub args: Vec<String>,
     /// Configuration description (optional)
     pub desc: Option<String>,
+    /// QEMU version detected at save time
+    pub qemu_version: Option<String>,
 }
