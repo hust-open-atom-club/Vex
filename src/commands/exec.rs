@@ -5,6 +5,7 @@ use std::fs;
 use std::process::Command;
 
 use crate::config::{QemuConfig, config_file};
+use crate::utils::qemu::get_qemu_version;
 
 #[derive(Args)]
 #[clap(about = "Execute a saved QEMU configuration")]
@@ -41,6 +42,21 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> Result<()> {
     let config: QemuConfig =
         serde_json::from_str(&config_json).context("Failed to deserialize configuration")?;
 
+    if let Some(saved_ver) = &config.qemu_version {
+        let current_ver = get_qemu_version(&config.qemu_bin);
+        match current_ver {
+            Some(curr) if curr != *saved_ver => {
+                println!("WARNING: Version mismatch!");
+                println!("   Configuration saved with QEMU {}", saved_ver);
+                println!("   Current system has QEMU {}", curr);
+                println!("   Some features might not work as expected.\n");
+            }
+            None => {
+                println!("WARNING: Could not detect current QEMU version.\n");
+            }
+            _ => {} // Versions match, all good
+        }
+    }
     let mut exec_args = config.args.clone();
 
     // Substitute parameters in args

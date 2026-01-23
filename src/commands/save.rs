@@ -4,6 +4,7 @@ use std::fs;
 
 use crate::config::{QemuConfig, config_file};
 use crate::utils::io::{prompt_user, prompt_user_default_no};
+use crate::utils::qemu::get_qemu_version;
 
 #[derive(Args)]
 #[clap(about = "Save QEMU configuration")]
@@ -75,11 +76,18 @@ pub fn save_command(
             println!("Debug parameters will be included in the saved configuration");
         }
     }
+    // Get QEMU version
+    let qemu_version = get_qemu_version(&qemu_bin);
 
+    // Optional: Print a log to inform the user
+    if let Some(v) = &qemu_version {
+        println!("Detected QEMU version: {}", v);
+    }
     let config = QemuConfig {
         qemu_bin: qemu_bin.clone(),
         args: final_args,
         desc,
+        qemu_version,
     };
 
     if config_path.exists() && !force {
