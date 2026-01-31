@@ -4,10 +4,18 @@ use std::fs;
 
 use crate::config::config_file;
 
-#[derive(Args)]
-#[clap(about = "Remove a saved QEMU configuration")]
+#[derive(Args, Debug)]
 pub struct RemoveArgs {
-    #[arg(help = "Configuration name to remove")]
+    /// Configuration name to remove.
+    ///
+    /// This action is irreversible. The configuration file will be permanently deleted.
+    ///
+    /// # Examples
+    ///
+    /// Delete a configuration:
+    /// ```shell
+    /// vex rm test-vm
+    /// ```
     pub name: String,
 }
 

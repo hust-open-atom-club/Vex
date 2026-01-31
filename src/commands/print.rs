@@ -4,10 +4,19 @@ use std::fs;
 
 use crate::config::{QemuConfig, config_file};
 
-#[derive(Args)]
-#[clap(about = "Print detailed information about a saved QEMU configuration")]
+#[derive(Args, Debug)]
 pub struct PrintArgs {
-    #[arg(help = "Configuration name to print")]
+    /// Configuration name to print.
+    ///
+    /// Displays the full JSON content, including QEMU binary path, arguments,
+    /// and the version detected at creation time.
+    ///
+    /// # Examples
+    ///
+    /// Inspect the configuration details:
+    /// ```shell
+    /// vex print my-vm
+    /// ```
     pub name: String,
 }
 

@@ -5,11 +5,29 @@ use std::io;
 
 use crate::commands::Cli;
 
-#[derive(Args)]
-#[clap(about = "Generate shell completion scripts")]
+#[derive(Args, Debug)]
 pub struct CompletionsArgs {
-    #[arg(help = "Shell type (bash, zsh, fish, powershell, elvish)")]
-    pub shell: Shell,
+    /// Shell type to generate completions for.
+    ///
+    /// Supported shells: bash, zsh, fish, powershell, elvish.
+    ///
+    /// # Examples
+    ///
+    /// Load completions for current session (Bash):
+    /// ```shell
+    /// source <(vex completions bash)
+    /// ```
+    ///
+    /// Install completions permanently (Bash):
+    /// ```shell
+    /// vex completions bash > ~/.local/share/bash-completion/completions/vex
+    /// ```
+    ///
+    /// Install completions (Zsh):
+    /// ```shell
+    /// vex completions zsh > /usr/local/share/zsh/site-functions/_vex
+    /// ```
+    pub shell: clap_complete::Shell,
 }
 
 pub fn completions_command(shell: Shell) -> Result<()> {
