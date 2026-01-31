@@ -4,8 +4,7 @@ use std::fs;
 
 use crate::config::{QemuConfig, config_dir};
 
-#[derive(Args)]
-#[clap(about = "List all saved QEMU configurations")]
+#[derive(Args, Debug)]
 pub struct ListArgs;
 
 pub fn list_command() -> Result<()> {

@@ -6,34 +6,42 @@ use crate::config::{QemuConfig, config_file};
 use crate::utils::io::{prompt_user, prompt_user_default_no};
 use crate::utils::qemu::get_qemu_version;
 
-#[derive(Args)]
-#[clap(about = "Save QEMU configuration")]
+#[derive(Args, Debug)]
 pub struct SaveArgs {
-    #[arg(help = "Configuration name for later reference")]
+    /// Configuration name for later reference.
+    ///
+    /// This name will be used to execute, rename, or remove the configuration later.
+    /// It must be unique within the Vex configuration directory.
     pub name: String,
 
-    #[arg(help = "Path to the QEMU executable (e.g., qemu-system-x86_64)")]
+    /// Path to the QEMU executable (e.g., qemu-system-x86_64).
     pub qemu_bin: String,
 
-    #[arg(
-        trailing_var_arg = true,
-        allow_hyphen_values = true,
-        help = "QEMU startup arguments"
-    )]
+    /// QEMU startup arguments.
+    ///
+    /// All arguments following the QEMU binary will be treated as QEMU parameters.
+    /// These parameters are stored literally and replayed when running `vex exec`.
+    ///
+    /// # Examples
+    ///
+    /// Save a basic VM:
+    /// ```shell
+    /// vex save my-vm qemu-system-x86_64 -m 2G -drive file=disk.img
+    /// ```
+    ///
+    /// Save with a description:
+    /// ```shell
+    /// vex save ubuntu-dev -d "Ubuntu 22.04 Environment" qemu-system-x86_64 -m 4G
+    /// ```
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub qemu_args: Vec<String>,
 
-    #[arg(
-        short = 'd',
-        long = "desc",
-        help = "Optional description for the configuration"
-    )]
+    /// Optional description for the configuration.
+    #[arg(short = 'd', long = "desc")]
     pub desc: Option<String>,
 
-    #[arg(
-        short = 'f',
-        long = "force",
-        help = "Force save without confirmation if configuration exists"
-    )]
+    /// Force save without confirmation if configuration exists.
+    #[arg(short = 'f', long = "force")]
     pub force: bool,
 }
 

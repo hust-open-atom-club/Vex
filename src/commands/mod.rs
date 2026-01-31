@@ -18,16 +18,41 @@ use clap::{Parser, Subcommand};
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Save a new QEMU configuration
     Save(SaveArgs),
+
+    /// Rename a saved configuration
     Rename(RenameArgs),
+
+    /// Remove a saved configuration
     Rm(RemoveArgs),
+
+    /// List all saved configurations
     List(ListArgs),
+
+    /// Print details of a configuration
     Print(PrintArgs),
+
+    /// Execute a saved configuration
     Exec(ExecArgs),
+
+    /// Generate shell completion scripts
     Completions(CompletionsArgs),
 }
 
 #[derive(Parser)]
+#[command(name = "vex")]
+#[command(author = "Vex Team")]
+#[command(version)]
+#[command(about = "A minimalist QEMU command-line manager", long_about = None)]
+#[command(help_template = "\
+{before-help}{name} {version}
+{author-with-newline}{about-with-newline}
+{usage-heading}
+    {usage}
+
+{all-args}{after-help}
+")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
