@@ -7,24 +7,35 @@ use std::process::Command;
 use crate::config::{QemuConfig, config_file};
 use crate::utils::qemu::get_qemu_version;
 
-#[derive(Args)]
-#[clap(about = "Execute a saved QEMU configuration")]
+#[derive(Args, Debug)]
 pub struct ExecArgs {
-    #[arg(help = "Configuration name to execute")]
+    /// Configuration name to execute.
+    ///
+    /// # Examples
+    ///
+    /// Run a VM normally:
+    /// ```shell
+    /// vex exec my-vm
+    /// ```
+    ///
+    /// Run in Debug mode (waits for GDB connection):
+    /// ```shell
+    /// vex exec -d my-vm
+    /// ```
     pub name: String,
 
-    #[arg(
-        short = 'd',
-        long = "debug",
-        help = "Start QEMU in debug mode (GDB server on port 1234)"
-    )]
+    /// Start QEMU in debug mode.
+    ///
+    /// This appends `-s -S` to the QEMU arguments:
+    /// - `-s`: Shorthand for -gdb tcp::1234
+    /// - `-S`: Freeze CPU at startup
+    ///
+    /// Useful for attaching a debugger (GDB) before the OS boots.
+    #[arg(short = 'd', long = "debug")]
     pub debug: bool,
 
-    #[arg(
-        short = 'f',
-        long = "full",
-        help = "Show full QEMU command line arguments"
-    )]
+    /// Show full QEMU command line arguments before starting.
+    #[arg(short = 'f', long = "full")]
     pub full: bool,
 }
 

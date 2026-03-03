@@ -5,27 +5,34 @@ use std::fs;
 use crate::config::{QemuConfig, config_file};
 use crate::utils::io::prompt_user_default_no;
 
-#[derive(Args)]
-#[clap(about = "Rename a saved QEMU configuration")]
+#[derive(Args, Debug)]
 pub struct RenameArgs {
-    #[arg(help = "Current configuration name")]
+    /// Current configuration name.
     pub old_name: String,
 
-    #[arg(help = "New configuration name")]
+    /// New configuration name.
     pub new_name: String,
 
-    #[arg(
-        short = 'd',
-        long = "desc",
-        help = "Update the configuration description"
-    )]
+    /// Update the configuration description.
+    ///
+    /// If not provided, the original description is preserved.
+    ///
+    /// # Examples
+    ///
+    /// Simply rename a config:
+    /// ```shell
+    /// vex rename ubuntu-20 ubuntu-22
+    /// ```
+    ///
+    /// Rename and update description:
+    /// ```shell
+    /// vex rename old-vm new-vm -d "Updated system image"
+    /// ```
+    #[arg(short = 'd', long = "desc")]
     pub desc: Option<String>,
 
-    #[arg(
-        short = 'f',
-        long = "force",
-        help = "Force rename without confirmation"
-    )]
+    /// Force rename without confirmation.
+    #[arg(short = 'f', long = "force")]
     pub force: bool,
 }
 
