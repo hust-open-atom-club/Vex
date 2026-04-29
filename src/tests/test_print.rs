@@ -49,7 +49,8 @@ fn print_full_output_format() {
         .output()
         .unwrap();
 
-    let output = vex.command()
+    let output = vex
+        .command()
         .env("VEX_CONFIG_DIR", &config_dir)
         .args(["print", "print-test"])
         .output()

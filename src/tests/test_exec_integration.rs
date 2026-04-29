@@ -21,7 +21,7 @@ fn save_config(temp_dir: &TempDir, name: &str) {
     let vex = vex_bin();
     vex.command()
         .env("VEX_CONFIG_DIR", &config_dir)
-        .args(["save", name, "qemu-system-x86_64", "-m", "2G"])
+        .args(["save", name, "/bin/true", "-nographic"])
         .output()
         .unwrap();
 }
@@ -68,5 +68,5 @@ fn exec_full_flag() {
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("qemu-system-x86_64") || stdout.contains("Args:"));
+    assert!(stdout.contains("/bin/true") || stdout.contains("Args:"));
 }
