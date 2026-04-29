@@ -2,11 +2,26 @@ use crate::config::QemuConfig;
 use crate::error::{VexError, VexResult};
 
 pub fn validate_config(config: &QemuConfig) -> VexResult<()> {
-    if config.qemu_bin.is_empty() {
+    if config.qemu_bin.is_empty() || config.qemu_bin.trim().is_empty() {
         return Err(VexError::ValidationError {
             field: Some("qemu_bin".to_string()),
-            reason: "QEMU binary path cannot be empty".to_string(),
+            reason: "QEMU binary path cannot be empty or whitespace-only".to_string(),
         });
+    }
+
+    for (i, arg) in config.args.iter().enumerate() {
+        if arg.is_empty() || arg.trim().is_empty() {
+            return Err(VexError::ValidationError {
+                field: Some(format!("args[{}]", i)),
+                reason: "argument cannot be empty or whitespace-only".to_string(),
+            });
+        }
+        if arg.contains('\0') {
+            return Err(VexError::ValidationError {
+                field: Some(format!("args[{}]", i)),
+                reason: "argument cannot contain null bytes".to_string(),
+            });
+        }
     }
 
     Ok(())

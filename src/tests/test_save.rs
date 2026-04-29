@@ -152,3 +152,41 @@ fn test_save_multiple_configs() {
     assert!(config_dir.join("vm2.json").exists());
     assert!(config_dir.join("vm3.json").exists());
 }
+
+#[test]
+fn test_save_force_overwrite() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "overwrite-vm", "qemu-system-x86_64", "-m", "1G"])
+        .output()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "-f",
+            "overwrite-vm",
+            "qemu-system-x86_64",
+            "-m",
+            "4G",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let content = std::fs::read_to_string(config_dir.join("overwrite-vm.json")).unwrap();
+    assert!(content.contains("4G"));
+}

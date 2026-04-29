@@ -72,3 +72,11 @@ fn test_substitute_nested_braces() {
     let result = substitute_params(&args, |k| env.get(k).cloned());
     assert_eq!(result, vec!["value"]);
 }
+
+#[test]
+fn test_substitute_malformed_unclosed_brace_passes_through() {
+    let env: HashMap<String, String> = HashMap::new();
+    let args = vec!["disk=${".to_string()];
+    let result = substitute_params(&args, |k| env.get(k).cloned());
+    assert_eq!(result, vec!["disk=${"]);
+}

@@ -100,3 +100,73 @@ fn test_rename_preserves_description() {
     assert!(config.contains("Important configuration"));
     assert!(config.contains("2G"));
 }
+
+#[test]
+fn test_rename_target_exists_with_force() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "source", "qemu-system-x86_64", "-m", "1G"])
+        .output()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "target", "qemu-system-x86_64", "-m", "2G"])
+        .output()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["rename", "-f", "source", "target"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(!config_dir.join("source.json").exists());
+    let content = std::fs::read_to_string(config_dir.join("target.json")).unwrap();
+    assert!(content.contains("1G"));
+}
+
+#[test]
+fn test_rename_with_desc_update() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "desc-vm", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["rename", "-d", "Updated description", "desc-vm", "new-desc"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let content = std::fs::read_to_string(config_dir.join("new-desc.json")).unwrap();
+    assert!(content.contains("Updated description"));
+}

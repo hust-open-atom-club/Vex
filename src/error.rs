@@ -56,7 +56,7 @@ pub enum VexError {
     #[error("Invalid remote spec '{input}': {reason}")]
     RemoteSpecInvalid { input: String, reason: String },
 
-    #[error("git {args} failed (exit {}){}", .exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()), if .stderr.is_empty() { String::new() } else { format!(": {}", .stderr) })]
+    #[error("git {args} failed (exit {}){}{}", .exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()), if .stderr.is_empty() { String::new() } else { format!(": {}", .stderr) }, if .stdout.is_empty() { String::new() } else { format!(" ({})", .stdout) })]
     GitCommandFailed {
         args: String,
         stderr: String,
@@ -76,6 +76,22 @@ pub enum VexError {
         editor: String,
         exit_code: Option<i32>,
     },
+}
+
+impl From<std::io::Error> for VexError {
+    fn from(err: std::io::Error) -> Self {
+        VexError::IoError {
+            path: PathBuf::from("<unknown>"),
+            operation: "io operation".to_string(),
+            source: err,
+        }
+    }
+}
+
+impl From<serde_json::Error> for VexError {
+    fn from(err: serde_json::Error) -> Self {
+        VexError::ConfigParseFailed { source: err }
+    }
 }
 
 pub type VexResult<T> = Result<T, VexError>;

@@ -1,7 +1,49 @@
 use std::error::Error;
+use std::io;
 use std::path::PathBuf;
 
 use crate::error::VexError;
+
+#[test]
+fn from_io_error_produces_io_variant() {
+    let io_err = io::Error::new(io::ErrorKind::PermissionDenied, "access denied");
+    let vex_err: VexError = io_err.into();
+    assert!(matches!(vex_err, VexError::IoError { .. }));
+    assert!(vex_err.to_string().contains("<unknown>"));
+}
+
+#[test]
+fn from_serde_error_produces_parse_variant() {
+    let json_err = serde_json::from_str::<serde_json::Value>("!!!").unwrap_err();
+    let vex_err: VexError = json_err.into();
+    assert!(matches!(vex_err, VexError::ConfigParseFailed { .. }));
+    assert!(vex_err.source().is_some());
+}
+
+#[test]
+fn git_command_failed_display_includes_stdout() {
+    let err = VexError::GitCommandFailed {
+        args: "status".into(),
+        stderr: String::new(),
+        stdout: "on branch main".into(),
+        exit_code: Some(1),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("on branch main"));
+}
+
+#[test]
+fn git_command_failed_display_with_both_stderr_and_stdout() {
+    let err = VexError::GitCommandFailed {
+        args: "push".into(),
+        stderr: "rejected".into(),
+        stdout: "Everything up-to-date".into(),
+        exit_code: Some(1),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("rejected"));
+    assert!(msg.contains("Everything up-to-date"));
+}
 
 #[test]
 fn config_not_found_display() {

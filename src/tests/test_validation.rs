@@ -104,3 +104,58 @@ fn parse_minimal_valid_json() {
     assert!(config.args.is_empty());
     assert!(config.desc.is_none());
 }
+
+#[test]
+fn validate_whitespace_only_binary_rejected() {
+    let config = QemuConfig {
+        qemu_bin: "   ".into(),
+        args: vec![],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_err());
+}
+
+#[test]
+fn validate_empty_arg_rejected() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec!["".into()],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_err());
+}
+
+#[test]
+fn validate_whitespace_only_arg_rejected() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec!["-m".into(), "  ".into()],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_err());
+}
+
+#[test]
+fn validate_null_byte_arg_rejected() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec!["-m\0evil".into()],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_err());
+}
+
+#[test]
+fn validate_valid_args_accepted() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec!["-m".into(), "2G".into(), "-smp".into(), "4".into()],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_ok());
+}
