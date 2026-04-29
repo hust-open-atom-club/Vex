@@ -1,39 +1,81 @@
-use std::fmt;
+use std::path::PathBuf;
 
-/// Custom error types for Vex application
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum VexError {
-    ConfigNotFound(String),
-    ConfigAlreadyExists(String),
-    InvalidConfig(String),
-    IoError(std::io::Error),
-    SerializationError(serde_json::Error),
+    #[error("Configuration '{name}' not found")]
+    ConfigNotFound { name: String },
+
+    #[error("Configuration '{name}' already exists")]
+    ConfigAlreadyExists { name: String },
+
+    #[error("Failed to parse configuration")]
+    ConfigParseFailed {
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("Failed to serialize configuration")]
+    ConfigSerializeFailed {
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("{}", match .field {
+        Some(f) => format!("Validation failed on '{}': {}", f, .reason),
+        None => format!("Validation failed: {}", .reason),
+    })]
+    ValidationError {
+        field: Option<String>,
+        reason: String,
+    },
+
+    #[error("IO error on {path}: {operation}")]
+    IoError {
+        path: PathBuf,
+        operation: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Failed to launch QEMU: {binary}")]
+    QemuLaunchFailed {
+        binary: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("QEMU '{binary}' exited with code {}", .exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()))]
+    QemuExitError {
+        binary: String,
+        exit_code: Option<i32>,
+    },
+
+    #[error("Remote registry not configured (set {env_var})")]
+    RemoteNotConfigured { env_var: String },
+
+    #[error("Invalid remote spec '{input}': {reason}")]
+    RemoteSpecInvalid { input: String, reason: String },
+
+    #[error("git {args} failed (exit {}){}", .exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()), if .stderr.is_empty() { String::new() } else { format!(": {}", .stderr) })]
+    GitCommandFailed {
+        args: String,
+        stderr: String,
+        stdout: String,
+        exit_code: Option<i32>,
+    },
+
+    #[error("Remote config '{id}/{name}:{tag}' not found")]
+    RemoteConfigNotFound {
+        id: String,
+        name: String,
+        tag: String,
+    },
+
+    #[error("Editor '{editor}' failed (exit {})", .exit_code.map_or_else(|| "unknown".to_string(), |c| c.to_string()))]
+    EditorFailed {
+        editor: String,
+        exit_code: Option<i32>,
+    },
 }
 
-impl fmt::Display for VexError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            VexError::ConfigNotFound(name) => write!(f, "Configuration '{}' not found", name),
-            VexError::ConfigAlreadyExists(name) => {
-                write!(f, "Configuration '{}' already exists", name)
-            }
-            VexError::InvalidConfig(msg) => write!(f, "Invalid configuration: {}", msg),
-            VexError::IoError(err) => write!(f, "IO error: {}", err),
-            VexError::SerializationError(err) => write!(f, "Serialization error: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for VexError {}
-
-impl From<std::io::Error> for VexError {
-    fn from(err: std::io::Error) -> Self {
-        VexError::IoError(err)
-    }
-}
-
-impl From<serde_json::Error> for VexError {
-    fn from(err: serde_json::Error) -> Self {
-        VexError::SerializationError(err)
-    }
-}
+pub type VexResult<T> = Result<T, VexError>;

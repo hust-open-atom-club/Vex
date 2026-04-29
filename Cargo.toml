@@ -13,3 +13,7 @@ anyhow = "1.0" # 简化错误处理
 regex = "1.10"
 escargot = "0.5.15"
 tempfile = "3.23.0"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+proptest = "1.11.0"

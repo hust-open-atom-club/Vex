@@ -1,31 +1,26 @@
-use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 
-use crate::config::config_file;
+use crate::config::{config_file, validate_config_name};
+use crate::error::{VexError, VexResult};
 
 #[derive(Args, Debug)]
 pub struct RemoveArgs {
-    /// Configuration name to remove.
-    ///
-    /// This action is irreversible. The configuration file will be permanently deleted.
-    ///
-    /// # Examples
-    ///
-    /// Delete a configuration:
-    /// ```shell
-    /// vex rm test-vm
-    /// ```
     pub name: String,
 }
 
-pub fn remove_command(name: String) -> Result<()> {
+pub fn remove_command(name: String) -> VexResult<()> {
+    validate_config_name(&name)?;
     let config_path = config_file(&name)?;
     if !config_path.exists() {
-        anyhow::bail!("Configuration '{}' does not exist, cannot delete", name);
+        return Err(VexError::ConfigNotFound { name: name.clone() });
     }
 
-    fs::remove_file(&config_path).context("Failed to delete config file")?;
+    fs::remove_file(&config_path).map_err(|e| VexError::IoError {
+        path: config_path,
+        operation: "delete config file".to_string(),
+        source: e,
+    })?;
     println!("Configuration '{}' deleted", name);
 
     Ok(())

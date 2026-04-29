@@ -23,7 +23,11 @@ fn test_edit_nonexistent() {
     assert!(!output.status.success());
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-    assert!(stderr.contains("does not exist") || stderr.contains("cannot edit"));
+    assert!(
+        stderr.contains("not found")
+            || stderr.contains("does not exist")
+            || stderr.contains("cannot edit")
+    );
 }
 
 #[cfg(unix)]

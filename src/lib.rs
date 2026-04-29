@@ -16,10 +16,9 @@ use commands::{
     push_command, remove_command, rename_command, save_command,
 };
 
-/// Main application logic
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command {
+    let result = match cli.command {
         Commands::Exec(args) => exec_command(args.name, args.debug, args.full),
         Commands::List(_) => list_command(),
         Commands::Print(args) => print_command(args.name),
@@ -38,5 +37,6 @@ pub fn run() -> Result<()> {
             args.qemu_args,
         ),
         Commands::Completions(args) => completions_command(args.shell),
-    }
+    };
+    result.map_err(|e| anyhow::anyhow!(e))
 }
