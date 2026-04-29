@@ -170,3 +170,104 @@ fn test_pull_restores_local_configuration_from_remote() {
     assert!(pulled_content.contains("\"Development VM\""));
     assert!(pulled_content.contains("\"1G\""));
 }
+
+#[test]
+fn test_pull_force_overwrites_existing_local_configuration() {
+    let (_remote_guard, remote_repo) = create_remote_registry();
+    let source_root = TempDir::new().unwrap();
+    let source_config_dir = source_root.path().join(".vex-source");
+    std::fs::create_dir_all(&source_config_dir).unwrap();
+
+    let vex = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let save_output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &source_config_dir)
+        .args([
+            "save",
+            "dev-box",
+            "-d",
+            "Remote VM",
+            "qemu-system-aarch64",
+            "-m",
+            "4G",
+        ])
+        .output()
+        .unwrap();
+    assert!(save_output.status.success());
+
+    let push_output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &source_config_dir)
+        .env("VEX_REMOTE_URL", &remote_repo)
+        .env("VEX_REMOTE_BRANCH", "main")
+        .args(["push", "team/dev-box:v3", "dev-box"])
+        .output()
+        .unwrap();
+    assert!(
+        push_output.status.success(),
+        "push failed: {}",
+        String::from_utf8_lossy(&push_output.stderr)
+    );
+
+    let target_root = TempDir::new().unwrap();
+    let target_config_dir = target_root.path().join(".vex-target");
+    std::fs::create_dir_all(&target_config_dir).unwrap();
+
+    let local_save = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &target_config_dir)
+        .args([
+            "save",
+            "dev-box",
+            "-d",
+            "Old local VM",
+            "qemu-system-x86_64",
+            "-m",
+            "2G",
+        ])
+        .output()
+        .unwrap();
+    assert!(local_save.status.success());
+
+    let local_config = target_config_dir.join("dev-box.json");
+    assert!(local_config.exists());
+    let before = std::fs::read_to_string(&local_config).unwrap();
+    assert!(before.contains("qemu-system-x86_64"));
+
+    let pull_output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &target_config_dir)
+        .env("VEX_REMOTE_URL", &remote_repo)
+        .env("VEX_REMOTE_BRANCH", "main")
+        .args(["pull", "-f", "team/dev-box:v3"])
+        .output()
+        .unwrap();
+    assert!(
+        pull_output.status.success(),
+        "pull -f failed: {}",
+        String::from_utf8_lossy(&pull_output.stderr)
+    );
+
+    let after = std::fs::read_to_string(&local_config).unwrap();
+    assert!(
+        after.contains("qemu-system-aarch64"),
+        "local config should contain remote binary after force pull"
+    );
+    assert!(
+        after.contains("4G"),
+        "local config should contain remote memory arg after force pull"
+    );
+    assert!(
+        !after.contains("qemu-system-x86_64"),
+        "local config should no longer contain old binary after force pull"
+    );
+    assert!(
+        !after.contains("Old local VM"),
+        "local config should no longer contain old description after force pull"
+    );
+}
