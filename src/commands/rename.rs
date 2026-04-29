@@ -1,7 +1,7 @@
 use clap::Args;
 use std::fs;
 
-use crate::config::{QemuConfig, config_file, validate_config_name};
+use crate::config::{config_file, load_config, validate_config_name};
 use crate::error::{VexError, VexResult};
 use crate::utils::io::prompt_user_default_no;
 
@@ -21,15 +21,10 @@ pub fn rename_command(
     old_name: String,
     new_name: String,
 ) -> VexResult<()> {
-    validate_config_name(&old_name)?;
     validate_config_name(&new_name)?;
 
+    let mut config = load_config(&old_name)?;
     let old_config_path = config_file(&old_name)?;
-    if !old_config_path.exists() {
-        return Err(VexError::ConfigNotFound {
-            name: old_name.clone(),
-        });
-    }
 
     let new_config_path = config_file(&new_name)?;
     if new_config_path.exists() && !force {
@@ -42,14 +37,6 @@ pub fn rename_command(
             return Ok(());
         }
     }
-
-    let config_json = fs::read_to_string(&old_config_path).map_err(|e| VexError::IoError {
-        path: old_config_path.clone(),
-        operation: "read config file".to_string(),
-        source: e,
-    })?;
-    let mut config: QemuConfig = serde_json::from_str(&config_json)
-        .map_err(|e| VexError::ConfigParseFailed { source: e })?;
 
     if let Some(new_desc) = desc {
         config.desc = Some(new_desc);

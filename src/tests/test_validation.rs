@@ -1,4 +1,6 @@
-use crate::config::{QemuConfig, parse_config_json, validate_config, validate_config_name};
+use crate::config::{
+    QemuConfig, load_config_from_dir, parse_config_json, validate_config, validate_config_name,
+};
 use crate::error::VexError;
 
 #[test]
@@ -158,4 +160,45 @@ fn validate_valid_args_accepted() {
         qemu_version: None,
     };
     assert!(validate_config(&config).is_ok());
+}
+
+#[test]
+fn load_config_from_dir_existing_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = QemuConfig {
+        qemu_bin: "qemu-system-arm".into(),
+        args: vec!["-m".into(), "1G".into()],
+        desc: Some("test vm".into()),
+        qemu_version: Some("9.0".into()),
+    };
+    let json = serde_json::to_string_pretty(&config).unwrap();
+    std::fs::write(dir.path().join("myvm.json"), &json).unwrap();
+
+    let loaded = load_config_from_dir(dir.path(), "myvm").unwrap();
+    assert_eq!(loaded.qemu_bin, "qemu-system-arm");
+    assert_eq!(loaded.args, vec!["-m", "1G"]);
+    assert_eq!(loaded.desc.as_deref(), Some("test vm"));
+    assert_eq!(loaded.qemu_version.as_deref(), Some("9.0"));
+}
+
+#[test]
+fn load_config_from_dir_missing_returns_config_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = load_config_from_dir(dir.path(), "nonexistent").unwrap_err();
+    assert!(matches!(err, VexError::ConfigNotFound { name } if name == "nonexistent"));
+}
+
+#[test]
+fn load_config_from_dir_invalid_json_returns_parse_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("broken.json"), "not valid json").unwrap();
+    let err = load_config_from_dir(dir.path(), "broken").unwrap_err();
+    assert!(matches!(err, VexError::ConfigParseFailed { .. }));
+}
+
+#[test]
+fn load_config_validates_name() {
+    use crate::config::load_config;
+    let err = load_config("../escape").unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
 }

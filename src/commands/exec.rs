@@ -1,10 +1,9 @@
 use clap::Args;
 use regex::Regex;
 use std::collections::HashMap;
-use std::fs;
 use std::process::Command;
 
-use crate::config::{QemuConfig, config_file, validate_config_name};
+use crate::config::{QemuConfig, load_config};
 use crate::error::{VexError, VexResult};
 use crate::utils::qemu::get_qemu_version;
 
@@ -18,19 +17,7 @@ pub struct ExecArgs {
 }
 
 pub fn exec_command(name: String, debug: bool, full: bool) -> VexResult<()> {
-    validate_config_name(&name)?;
-    let config_path = config_file(&name)?;
-    if !config_path.exists() {
-        return Err(VexError::ConfigNotFound { name: name.clone() });
-    }
-
-    let config_json = fs::read_to_string(&config_path).map_err(|e| VexError::IoError {
-        path: config_path.clone(),
-        operation: "read config file".to_string(),
-        source: e,
-    })?;
-    let config: QemuConfig = serde_json::from_str(&config_json)
-        .map_err(|e| VexError::ConfigParseFailed { source: e })?;
+    let config = load_config(&name)?;
 
     if let Some(saved_ver) = &config.qemu_version {
         let current_ver = get_qemu_version(&config.qemu_bin);

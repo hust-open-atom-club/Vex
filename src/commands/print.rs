@@ -1,8 +1,7 @@
 use clap::Args;
-use std::fs;
 
-use crate::config::{QemuConfig, config_file, validate_config_name};
-use crate::error::{VexError, VexResult};
+use crate::config::{config_file, load_config};
+use crate::error::VexResult;
 
 #[derive(Args, Debug)]
 pub struct PrintArgs {
@@ -10,19 +9,8 @@ pub struct PrintArgs {
 }
 
 pub fn print_command(name: String) -> VexResult<()> {
-    validate_config_name(&name)?;
+    let config = load_config(&name)?;
     let config_path = config_file(&name)?;
-    if !config_path.exists() {
-        return Err(VexError::ConfigNotFound { name: name.clone() });
-    }
-
-    let config_json = fs::read_to_string(&config_path).map_err(|e| VexError::IoError {
-        path: config_path.clone(),
-        operation: "read config file".to_string(),
-        source: e,
-    })?;
-    let config: QemuConfig = serde_json::from_str(&config_json)
-        .map_err(|e| VexError::ConfigParseFailed { source: e })?;
 
     println!("Configuration: {}", name);
     println!("{}", "=".repeat(60));
