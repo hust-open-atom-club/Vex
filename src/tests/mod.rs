@@ -1,7 +1,16 @@
 mod exec_tests;
+mod property_tests;
+pub mod test_completions;
 pub mod test_edit;
+pub mod test_error;
+pub mod test_exec_integration;
 pub mod test_list;
+pub mod test_print;
+pub mod test_push_pull;
 pub mod test_remote;
+pub mod test_remote_parsing;
 pub mod test_remove;
 pub mod test_rename;
 pub mod test_save;
+pub mod test_serde;
+pub mod test_validation;

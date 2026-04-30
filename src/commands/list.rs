@@ -1,24 +1,32 @@
-use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 
 use crate::config::{QemuConfig, config_dir};
+use crate::error::{VexError, VexResult};
 
 #[derive(Args, Debug)]
 pub struct ListArgs;
 
-pub fn list_command() -> Result<()> {
+pub fn list_command() -> VexResult<()> {
     let dir = config_dir()?;
     if !dir.exists() {
         println!("No configurations saved yet.");
         return Ok(());
     }
 
-    let entries = fs::read_dir(&dir).context("Failed to read config directory")?;
+    let entries = fs::read_dir(&dir).map_err(|e| VexError::IoError {
+        path: dir.clone(),
+        operation: "read config directory".to_string(),
+        source: e,
+    })?;
     let mut configs = Vec::new();
 
     for entry in entries {
-        let entry = entry.context("Failed to read directory entry")?;
+        let entry = entry.map_err(|e| VexError::IoError {
+            path: dir.clone(),
+            operation: "read directory entry".to_string(),
+            source: e,
+        })?;
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "json")
             && let Some(name) = path.file_stem().and_then(|s| s.to_str())
@@ -30,7 +38,6 @@ pub fn list_command() -> Result<()> {
                     }
                 }
                 Err(_) => {
-                    // Skip invalid config files
                     continue;
                 }
             }

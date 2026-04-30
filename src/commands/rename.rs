@@ -1,37 +1,16 @@
-use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 
-use crate::config::{QemuConfig, config_file};
+use crate::config::{config_file, load_config, validate_config_name};
+use crate::error::{VexError, VexResult};
 use crate::utils::io::prompt_user_default_no;
 
 #[derive(Args, Debug)]
 pub struct RenameArgs {
-    /// Current configuration name.
     pub old_name: String,
-
-    /// New configuration name.
     pub new_name: String,
-
-    /// Update the configuration description.
-    ///
-    /// If not provided, the original description is preserved.
-    ///
-    /// # Examples
-    ///
-    /// Simply rename a config:
-    /// ```shell
-    /// vex rename ubuntu-20 ubuntu-22
-    /// ```
-    ///
-    /// Rename and update description:
-    /// ```shell
-    /// vex rename old-vm new-vm -d "Updated system image"
-    /// ```
     #[arg(short = 'd', long = "desc")]
     pub desc: Option<String>,
-
-    /// Force rename without confirmation.
     #[arg(short = 'f', long = "force")]
     pub force: bool,
 }
@@ -41,11 +20,11 @@ pub fn rename_command(
     force: bool,
     old_name: String,
     new_name: String,
-) -> Result<()> {
+) -> VexResult<()> {
+    validate_config_name(&new_name)?;
+
+    let mut config = load_config(&old_name)?;
     let old_config_path = config_file(&old_name)?;
-    if !old_config_path.exists() {
-        anyhow::bail!("Configuration '{}' does not exist, cannot rename", old_name);
-    }
 
     let new_config_path = config_file(&new_name)?;
     if new_config_path.exists() && !force {
@@ -59,23 +38,23 @@ pub fn rename_command(
         }
     }
 
-    // Read the old configuration
-    let config_json = fs::read_to_string(&old_config_path).context("Failed to read config file")?;
-    let mut config: QemuConfig =
-        serde_json::from_str(&config_json).context("Failed to deserialize configuration")?;
-
-    // Update description if provided
     if let Some(new_desc) = desc {
         config.desc = Some(new_desc);
     }
 
-    // Save to new location
-    let new_config_json =
-        serde_json::to_string_pretty(&config).context("Failed to serialize configuration")?;
-    fs::write(&new_config_path, new_config_json).context("Failed to save new config file")?;
+    let new_config_json = serde_json::to_string_pretty(&config)
+        .map_err(|e| VexError::ConfigSerializeFailed { source: e })?;
+    fs::write(&new_config_path, new_config_json).map_err(|e| VexError::IoError {
+        path: new_config_path.clone(),
+        operation: "save new config file".to_string(),
+        source: e,
+    })?;
 
-    // Remove old configuration
-    fs::remove_file(&old_config_path).context("Failed to delete old config file")?;
+    fs::remove_file(&old_config_path).map_err(|e| VexError::IoError {
+        path: old_config_path,
+        operation: "delete old config file".to_string(),
+        source: e,
+    })?;
 
     if let Some(desc) = &config.desc {
         println!(

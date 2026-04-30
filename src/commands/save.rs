@@ -1,46 +1,19 @@
-use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 
-use crate::config::{QemuConfig, config_file};
+use crate::config::{QemuConfig, config_file, validate_config, validate_config_name};
+use crate::error::{VexError, VexResult};
 use crate::utils::io::{prompt_user, prompt_user_default_no};
 use crate::utils::qemu::get_qemu_version;
 
 #[derive(Args, Debug)]
 pub struct SaveArgs {
-    /// Configuration name for later reference.
-    ///
-    /// This name will be used to execute, rename, or remove the configuration later.
-    /// It must be unique within the Vex configuration directory.
     pub name: String,
-
-    /// Path to the QEMU executable (e.g., qemu-system-x86_64).
     pub qemu_bin: String,
-
-    /// QEMU startup arguments.
-    ///
-    /// All arguments following the QEMU binary will be treated as QEMU parameters.
-    /// These parameters are stored literally and replayed when running `vex exec`.
-    ///
-    /// # Examples
-    ///
-    /// Save a basic VM:
-    /// ```shell
-    /// vex save my-vm qemu-system-x86_64 -m 2G -drive file=disk.img
-    /// ```
-    ///
-    /// Save with a description:
-    /// ```shell
-    /// vex save ubuntu-dev -d "Ubuntu 22.04 Environment" qemu-system-x86_64 -m 4G
-    /// ```
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub qemu_args: Vec<String>,
-
-    /// Optional description for the configuration.
     #[arg(short = 'd', long = "desc")]
     pub desc: Option<String>,
-
-    /// Force save without confirmation if configuration exists.
     #[arg(short = 'f', long = "force")]
     pub force: bool,
 }
@@ -51,10 +24,10 @@ pub fn save_command(
     desc: Option<String>,
     qemu_bin: String,
     qemu_args: Vec<String>,
-) -> Result<()> {
+) -> VexResult<()> {
+    validate_config_name(&name)?;
     let config_path = config_file(&name)?;
 
-    // Check if debug parameters -s or -S are present
     let has_debug_args = qemu_args.iter().any(|arg| arg == "-s" || arg == "-S");
 
     let mut final_args = qemu_args.clone();
@@ -70,7 +43,6 @@ pub fn save_command(
         println!("Skip saving debug parameters and use exec -d for remote debugging? [Y/n]");
 
         if prompt_user()? {
-            // User chose to skip debug parameters
             final_args = qemu_args
                 .iter()
                 .filter(|&arg| arg != "-s" && arg != "-S")
@@ -84,10 +56,9 @@ pub fn save_command(
             println!("Debug parameters will be included in the saved configuration");
         }
     }
-    // Get QEMU version
+
     let qemu_version = get_qemu_version(&qemu_bin);
 
-    // Optional: Print a log to inform the user
     if let Some(v) = &qemu_version {
         println!("Detected QEMU version: {}", v);
     }
@@ -98,6 +69,8 @@ pub fn save_command(
         qemu_version,
     };
 
+    validate_config(&config)?;
+
     if config_path.exists() && !force {
         println!("Configuration '{}' already exists, overwrite? [y/N]", name);
         if !prompt_user_default_no()? {
@@ -106,9 +79,13 @@ pub fn save_command(
         }
     }
 
-    let config_json =
-        serde_json::to_string_pretty(&config).context("Failed to serialize configuration")?;
-    fs::write(&config_path, config_json).context("Failed to save config file")?;
+    let config_json = serde_json::to_string_pretty(&config)
+        .map_err(|e| VexError::ConfigSerializeFailed { source: e })?;
+    fs::write(&config_path, config_json).map_err(|e| VexError::IoError {
+        path: config_path.clone(),
+        operation: "save config file".to_string(),
+        source: e,
+    })?;
 
     if let Some(desc) = &config.desc {
         println!(

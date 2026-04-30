@@ -152,3 +152,195 @@ fn test_save_multiple_configs() {
     assert!(config_dir.join("vm2.json").exists());
     assert!(config_dir.join("vm3.json").exists());
 }
+
+#[test]
+fn test_save_force_overwrite() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "overwrite-vm", "qemu-system-x86_64", "-m", "1G"])
+        .output()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "-f",
+            "overwrite-vm",
+            "qemu-system-x86_64",
+            "-m",
+            "4G",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let content = std::fs::read_to_string(config_dir.join("overwrite-vm.json")).unwrap();
+    assert!(content.contains("4G"));
+}
+
+#[test]
+fn test_save_invalid_name_path_traversal() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "../escape", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(
+        stderr.contains("validation") || stderr.contains("separator") || stderr.contains("name")
+    );
+}
+
+#[test]
+fn test_save_then_list_shows_config() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "listed-vm",
+            "-d",
+            "Should appear in list",
+            "qemu-system-x86_64",
+        ])
+        .output()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .arg("list")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("listed-vm"));
+    assert!(stdout.contains("Should appear in list"));
+}
+
+#[test]
+fn test_save_no_args_creates_valid_config() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "minimal-vm", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let content = std::fs::read_to_string(config_dir.join("minimal-vm.json")).unwrap();
+    let config: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(config["qemu_bin"], "qemu-system-x86_64");
+    assert!(config["args"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn test_save_name_with_dots_and_hyphens() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "my-vm_v2.0", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert!(config_dir.join("my-vm_v2.0.json").exists());
+}
+
+#[test]
+fn test_save_preserves_all_args() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "args-vm",
+            "qemu-system-x86_64",
+            "-m",
+            "4G",
+            "-smp",
+            "cores=4,threads=2",
+            "-drive",
+            "file=disk.qcow2,format=qcow2",
+            "-netdev",
+            "user,id=net0",
+            "-device",
+            "virtio-net,netdev=net0",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let content = std::fs::read_to_string(config_dir.join("args-vm.json")).unwrap();
+    let config: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let args = config["args"].as_array().unwrap();
+    assert_eq!(args.len(), 10);
+}

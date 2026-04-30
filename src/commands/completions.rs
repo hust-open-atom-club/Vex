@@ -1,9 +1,9 @@
-use anyhow::Result;
 use clap::{Args, CommandFactory};
 use clap_complete::{Shell, generate};
 use std::io;
 
 use crate::commands::Cli;
+use crate::error::VexResult;
 
 #[derive(Args, Debug)]
 /// Generate shell completion scripts
@@ -33,7 +33,7 @@ pub struct CompletionsArgs {
     pub shell: clap_complete::Shell,
 }
 
-pub fn completions_command(shell: Shell) -> Result<()> {
+pub fn completions_command(shell: Shell) -> VexResult<()> {
     let mut cmd = Cli::command();
     // Get the binary name (typically "vex")
     let bin_name = cmd.get_name().to_string();

@@ -1,4 +1,3 @@
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -7,6 +6,7 @@ use std::process::Command;
 use tempfile::{Builder, TempDir};
 
 use crate::config::QemuConfig;
+use crate::error::{VexError, VexResult};
 use crate::utils::io::prompt_user_default_no;
 
 const DEFAULT_TAG: &str = "latest";
@@ -24,10 +24,13 @@ pub struct RemoteSpec {
 }
 
 impl RemoteSpec {
-    pub fn parse(input: &str) -> Result<Self> {
+    pub fn parse(input: &str) -> VexResult<Self> {
         let (id, remainder) = input
             .split_once('/')
-            .context("Remote reference must be in the form <id/name>[:tag]")?;
+            .ok_or_else(|| VexError::RemoteSpecInvalid {
+                input: input.to_string(),
+                reason: "must be in the form <id/name>[:tag]".to_string(),
+            })?;
         let (name, tag) = match remainder.split_once(':') {
             Some((name, tag)) => (name, Some(tag)),
             None => (remainder, None),
@@ -94,14 +97,18 @@ pub enum PublishOutcome {
     Pushed,
 }
 
-pub fn clone_remote_repo() -> Result<(TempDir, PathBuf)> {
+pub fn clone_remote_repo() -> VexResult<(TempDir, PathBuf)> {
     let remote_url = remote_url()?;
     let branch = remote_branch();
 
     let temp_dir = Builder::new()
         .prefix("vex-remote-")
         .tempdir()
-        .context("Failed to create temporary directory for remote operations")?;
+        .map_err(|e| VexError::IoError {
+            path: PathBuf::from("/tmp"),
+            operation: "create temporary directory".to_string(),
+            source: e,
+        })?;
     let worktree = temp_dir.path().join("repo");
 
     run_git(
@@ -113,22 +120,20 @@ pub fn clone_remote_repo() -> Result<(TempDir, PathBuf)> {
     Ok((temp_dir, worktree))
 }
 
-pub fn load_published_config(worktree: &Path, spec: &RemoteSpec) -> Result<PublishedConfig> {
+pub fn load_published_config(worktree: &Path, spec: &RemoteSpec) -> VexResult<PublishedConfig> {
     let remote_path = worktree.join(spec.tag_path());
     if !remote_path.exists() {
-        anyhow::bail!(
-            "Remote configuration '{} / {}:{}' does not exist",
-            spec.id,
-            spec.name,
-            spec.resolved_tag()
-        );
+        return Err(VexError::RemoteConfigNotFound {
+            id: spec.id.clone(),
+            name: spec.name.clone(),
+            tag: spec.resolved_tag().to_string(),
+        });
     }
 
-    let content = fs::read_to_string(&remote_path).with_context(|| {
-        format!(
-            "Failed to read remote configuration file {}",
-            remote_path.display()
-        )
+    let content = fs::read_to_string(&remote_path).map_err(|e| VexError::IoError {
+        path: remote_path.clone(),
+        operation: "read remote configuration file".to_string(),
+        source: e,
     })?;
 
     if let Ok(published) = serde_json::from_str::<PublishedConfig>(&content) {
@@ -136,7 +141,7 @@ pub fn load_published_config(worktree: &Path, spec: &RemoteSpec) -> Result<Publi
     }
 
     let config: QemuConfig =
-        serde_json::from_str(&content).context("Failed to deserialize remote configuration")?;
+        serde_json::from_str(&content).map_err(|e| VexError::ConfigParseFailed { source: e })?;
     Ok(PublishedConfig::new(
         spec,
         spec.resolved_tag().to_string(),
@@ -148,7 +153,7 @@ pub fn publish_config(
     spec: &RemoteSpec,
     config: &QemuConfig,
     force: bool,
-) -> Result<PublishOutcome> {
+) -> VexResult<PublishOutcome> {
     let (_temp_dir, worktree) = clone_remote_repo()?;
     let published_tag = spec.resolved_tag().to_string();
     let target_path = worktree.join(spec.tag_path());
@@ -187,46 +192,72 @@ pub fn publish_config(
     Ok(PublishOutcome::Pushed)
 }
 
-fn validate_segment(label: &str, value: &str) -> Result<()> {
+fn validate_segment(label: &str, value: &str) -> VexResult<()> {
     if value.is_empty() {
-        anyhow::bail!("Remote {} cannot be empty", label);
+        return Err(VexError::RemoteSpecInvalid {
+            input: value.to_string(),
+            reason: format!("{} cannot be empty", label),
+        });
+    }
+
+    if value.contains('\0') {
+        return Err(VexError::RemoteSpecInvalid {
+            input: value.to_string(),
+            reason: format!("{} cannot contain null bytes", label),
+        });
+    }
+
+    if value.len() > 255 {
+        return Err(VexError::RemoteSpecInvalid {
+            input: value.to_string(),
+            reason: format!("{} exceeds 255 characters", label),
+        });
     }
 
     if matches!(value, "." | "..") {
-        anyhow::bail!("Remote {} cannot be '.' or '..'", label);
+        return Err(VexError::RemoteSpecInvalid {
+            input: value.to_string(),
+            reason: format!("{} cannot be '.' or '..'", label),
+        });
     }
 
-    if value
+    if !value
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
     {
-        Ok(())
-    } else {
-        anyhow::bail!(
-            "Remote {} '{}' contains unsupported characters. Use letters, numbers, '.', '-' or '_' only",
-            label,
-            value
-        );
+        return Err(VexError::RemoteSpecInvalid {
+            input: value.to_string(),
+            reason: format!(
+                "{} '{}' contains unsupported characters. Use letters, numbers, '.', '-' or '_' only",
+                label, value
+            ),
+        });
     }
+
+    Ok(())
 }
 
 fn registry_root() -> PathBuf {
     PathBuf::from("configs")
 }
 
-fn remote_url() -> Result<String> {
+fn remote_url() -> VexResult<String> {
     match env::var(REMOTE_URL_ENV) {
-        Ok(value) if !value.trim().is_empty() => {
-            normalize_remote_url(value.trim(), &env::current_dir()?)
-        }
-        _ => anyhow::bail!(
-            "Remote registry is not configured. Set {} to a Git repository URL or local path",
-            REMOTE_URL_ENV
+        Ok(value) if !value.trim().is_empty() => normalize_remote_url(
+            value.trim(),
+            &env::current_dir().map_err(|e| VexError::IoError {
+                path: PathBuf::from("."),
+                operation: "get current directory".to_string(),
+                source: e,
+            })?,
         ),
+        _ => Err(VexError::RemoteNotConfigured {
+            env_var: REMOTE_URL_ENV.to_string(),
+        }),
     }
 }
 
-fn normalize_remote_url(value: &str, cwd: &Path) -> Result<String> {
+fn normalize_remote_url(value: &str, cwd: &Path) -> VexResult<String> {
     if is_explicit_git_url(value) {
         return Ok(value.to_string());
     }
@@ -246,7 +277,7 @@ fn remote_branch() -> String {
     }
 }
 
-fn prepare_worktree(worktree: &Path, branch: &str) -> Result<()> {
+fn prepare_worktree(worktree: &Path, branch: &str) -> VexResult<()> {
     let origin_branch = format!("origin/{}", branch);
     let origin_ref = format!("refs/remotes/origin/{}", branch);
 
@@ -262,10 +293,15 @@ fn prepare_worktree(worktree: &Path, branch: &str) -> Result<()> {
 
     let has_commits = git_succeeds(worktree, &["rev-parse", "--verify", "HEAD"]);
     if has_commits {
-        anyhow::bail!(
-            "Remote branch '{}' does not exist or could not be fetched",
-            branch
-        );
+        return Err(VexError::GitCommandFailed {
+            args: format!("fetch origin {}", branch),
+            stderr: format!(
+                "Remote branch '{}' does not exist or could not be fetched",
+                branch
+            ),
+            stdout: String::new(),
+            exit_code: None,
+        });
     }
 
     if !git_succeeds(worktree, &["checkout", "-B", branch]) {
@@ -275,7 +311,7 @@ fn prepare_worktree(worktree: &Path, branch: &str) -> Result<()> {
     Ok(())
 }
 
-fn configure_commit_identity(worktree: &Path) -> Result<()> {
+fn configure_commit_identity(worktree: &Path) -> VexResult<()> {
     let user_name = env::var(GIT_USER_NAME_ENV).unwrap_or_else(|_| "Vex CLI".to_string());
     let user_email =
         env::var(GIT_USER_EMAIL_ENV).unwrap_or_else(|_| "vex@example.invalid".to_string());
@@ -286,30 +322,32 @@ fn configure_commit_identity(worktree: &Path) -> Result<()> {
     Ok(())
 }
 
-fn write_published_config(path: &Path, published: &PublishedConfig) -> Result<()> {
+fn write_published_config(path: &Path, published: &PublishedConfig) -> VexResult<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create remote configuration directory {}",
-                parent.display()
-            )
+        fs::create_dir_all(parent).map_err(|e| VexError::IoError {
+            path: parent.to_path_buf(),
+            operation: "create remote configuration directory".to_string(),
+            source: e,
         })?;
     }
 
-    let content =
-        serde_json::to_string_pretty(published).context("Failed to serialize published config")?;
-    fs::write(path, content)
-        .with_context(|| format!("Failed to write remote configuration {}", path.display()))?;
+    let content = serde_json::to_string_pretty(published)
+        .map_err(|e| VexError::ConfigSerializeFailed { source: e })?;
+    fs::write(path, content).map_err(|e| VexError::IoError {
+        path: path.to_path_buf(),
+        operation: "write remote configuration".to_string(),
+        source: e,
+    })?;
 
     Ok(())
 }
 
-fn git_status_is_clean(worktree: &Path) -> Result<bool> {
+fn git_status_is_clean(worktree: &Path) -> VexResult<bool> {
     let output = git_output(worktree, &["status", "--short"])?;
     Ok(String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
-fn run_git(worktree: &Path, args: &[&str]) -> Result<()> {
+fn run_git(worktree: &Path, args: &[&str]) -> VexResult<()> {
     let output = git_output(worktree, args)?;
     if output.status.success() {
         return Ok(());
@@ -317,16 +355,12 @@ fn run_git(worktree: &Path, args: &[&str]) -> Result<()> {
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    anyhow::bail!(
-        "git {} failed: {}{}",
-        args.join(" "),
+    Err(VexError::GitCommandFailed {
+        args: args.join(" "),
         stderr,
-        if stdout.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", stdout)
-        }
-    );
+        stdout,
+        exit_code: output.status.code(),
+    })
 }
 
 fn git_succeeds(worktree: &Path, args: &[&str]) -> bool {
@@ -335,18 +369,25 @@ fn git_succeeds(worktree: &Path, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-fn git_output(worktree: &Path, args: &[&str]) -> Result<std::process::Output> {
+fn git_output(worktree: &Path, args: &[&str]) -> VexResult<std::process::Output> {
     Command::new("git")
         .args(args)
         .current_dir(worktree)
         .output()
-        .with_context(|| format!("Failed to execute git {}", args.join(" ")))
+        .map_err(|e| VexError::IoError {
+            path: PathBuf::from("git"),
+            operation: format!("execute git {}", args.join(" ")),
+            source: e,
+        })
 }
 
-fn path_to_string(path: &Path) -> Result<String> {
+fn path_to_string(path: &Path) -> VexResult<String> {
     path.to_str()
         .map(ToOwned::to_owned)
-        .context("Path contains invalid Unicode")
+        .ok_or_else(|| VexError::ValidationError {
+            field: None,
+            reason: "path contains invalid Unicode".to_string(),
+        })
 }
 
 fn is_explicit_git_url(value: &str) -> bool {
