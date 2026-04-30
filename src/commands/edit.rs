@@ -6,7 +6,7 @@ use std::process::Command;
 use tempfile::Builder;
 
 use crate::commands::exec::exec_command;
-use crate::config::{QemuConfig, config_file, validate_config, validate_config_name};
+use crate::config::{QemuConfig, config_file, sanitize_config_name, validate_config};
 use crate::error::{VexError, VexResult};
 use crate::utils::io::prompt_user_default_no;
 
@@ -16,7 +16,7 @@ pub struct EditArgs {
 }
 
 pub fn edit_command(name: String) -> VexResult<()> {
-    validate_config_name(&name)?;
+    sanitize_config_name(&name)?;
     let config_path = config_file(&name)?;
     if !config_path.exists() {
         return Err(VexError::ConfigNotFound { name: name.clone() });

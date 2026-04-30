@@ -1,7 +1,7 @@
 use clap::Args;
 use std::fs;
 
-use crate::config::{config_file, validate_config_name};
+use crate::config::{config_file, sanitize_config_name};
 use crate::error::{VexError, VexResult};
 
 #[derive(Args, Debug)]
@@ -10,7 +10,7 @@ pub struct RemoveArgs {
 }
 
 pub fn remove_command(name: String) -> VexResult<()> {
-    validate_config_name(&name)?;
+    sanitize_config_name(&name)?;
     let config_path = config_file(&name)?;
     if !config_path.exists() {
         return Err(VexError::ConfigNotFound { name: name.clone() });
