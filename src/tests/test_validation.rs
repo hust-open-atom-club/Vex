@@ -202,3 +202,232 @@ fn load_config_validates_name() {
     let err = load_config("../escape").unwrap_err();
     assert!(matches!(err, VexError::ValidationError { .. }));
 }
+
+#[test]
+fn validate_null_byte_in_binary_rejected() {
+    let config = QemuConfig {
+        qemu_bin: "qemu\0injected".into(),
+        args: vec![],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_ok());
+}
+
+#[test]
+fn validate_config_no_args_accepted() {
+    let config = QemuConfig {
+        qemu_bin: "qemu-system-riscv64".into(),
+        args: vec![],
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_ok());
+}
+
+#[test]
+fn validate_config_many_args_accepted() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: (0..100).map(|i| format!("-arg{}", i)).collect(),
+        desc: None,
+        qemu_version: None,
+    };
+    assert!(validate_config(&config).is_ok());
+}
+
+#[test]
+fn validate_multiple_empty_args_reports_first_index() {
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec!["-m".into(), "".into(), "".into()],
+        desc: None,
+        qemu_version: None,
+    };
+    let err = validate_config(&config).unwrap_err();
+    match err {
+        VexError::ValidationError { field, .. } => {
+            assert_eq!(field, Some("args[1]".to_string()));
+        }
+        _ => panic!("expected ValidationError"),
+    }
+}
+
+#[test]
+fn validate_null_byte_at_various_arg_positions() {
+    for i in 0..3 {
+        let mut args: Vec<String> = vec!["-m".into(), "2G".into(), "-smp".into()];
+        args[i] = format!("val\0ue{}", i);
+        let config = QemuConfig {
+            qemu_bin: "qemu".into(),
+            args,
+            desc: None,
+            qemu_version: None,
+        };
+        let err = validate_config(&config).unwrap_err();
+        match err {
+            VexError::ValidationError { field, reason, .. } => {
+                assert_eq!(field, Some(format!("args[{}]", i)));
+                assert!(reason.contains("null"));
+            }
+            _ => panic!("expected ValidationError for index {}", i),
+        }
+    }
+}
+
+#[test]
+fn validate_name_unicode_rejected() {
+    assert!(validate_config_name("虚拟机").is_err());
+    assert!(validate_config_name("café").is_err());
+    assert!(validate_config_name("名前").is_err());
+}
+
+#[test]
+fn validate_name_control_chars_rejected() {
+    assert!(validate_config_name("name\ttab").is_err());
+    assert!(validate_config_name("name\nnewline").is_err());
+    assert!(validate_config_name("name\rcarriage").is_err());
+    assert!(validate_config_name("\x07bell").is_err());
+}
+
+#[test]
+fn validate_name_triple_dots_accepted() {
+    assert!(validate_config_name("...").is_ok());
+}
+
+#[test]
+fn validate_name_only_hyphens_accepted() {
+    assert!(validate_config_name("-").is_ok());
+    assert!(validate_config_name("---").is_ok());
+}
+
+#[test]
+fn validate_name_only_underscores_accepted() {
+    assert!(validate_config_name("_").is_ok());
+    assert!(validate_config_name("___").is_ok());
+}
+
+#[test]
+fn validate_name_colon_semicolon_pipe_rejected() {
+    assert!(validate_config_name("name:tag").is_err());
+    assert!(validate_config_name("name;cmd").is_err());
+    assert!(validate_config_name("name|pipe").is_err());
+}
+
+#[test]
+fn validate_name_boundary_254_accepted() {
+    let name = "a".repeat(254);
+    assert!(validate_config_name(&name).is_ok());
+}
+
+#[test]
+fn validate_name_boundary_1_accepted() {
+    assert!(validate_config_name("a").is_ok());
+    assert!(validate_config_name("0").is_ok());
+    assert!(validate_config_name("_").is_ok());
+    assert!(validate_config_name("-").is_ok());
+}
+
+#[test]
+fn validate_name_tilde_hash_rejected() {
+    assert!(validate_config_name("~config").is_err());
+    assert!(validate_config_name("#config").is_err());
+    assert!(validate_config_name("config$").is_err());
+    assert!(validate_config_name("config%").is_err());
+}
+
+#[test]
+fn parse_config_json_extra_fields_tolerated() {
+    let json = r#"{"qemu_bin":"qemu","args":[],"extra_field":"ignored","num":42}"#;
+    let config = parse_config_json(json).unwrap();
+    assert_eq!(config.qemu_bin, "qemu");
+}
+
+#[test]
+fn parse_config_json_numeric_qemu_bin_rejected() {
+    let json = r#"{"qemu_bin":42,"args":[]}"#;
+    assert!(parse_config_json(json).is_err());
+}
+
+#[test]
+fn parse_config_json_non_array_args_rejected() {
+    let json = r#"{"qemu_bin":"qemu","args":"not-an-array"}"#;
+    assert!(parse_config_json(json).is_err());
+}
+
+#[test]
+fn parse_config_json_null_qemu_bin_rejected() {
+    let json = r#"{"qemu_bin":null,"args":[]}"#;
+    assert!(parse_config_json(json).is_err());
+}
+
+#[test]
+fn parse_config_json_args_with_numbers_rejected() {
+    let json = r#"{"qemu_bin":"qemu","args":[1,2,3]}"#;
+    assert!(parse_config_json(json).is_err());
+}
+
+#[test]
+fn parse_config_json_preserves_unicode_in_desc() {
+    let json = r#"{"qemu_bin":"qemu","args":[],"desc":"开发虚拟机 🖥️"}"#;
+    let config = parse_config_json(json).unwrap();
+    assert_eq!(config.desc.as_deref(), Some("开发虚拟机 🖥️"));
+}
+
+#[test]
+fn parse_config_json_preserves_version() {
+    let json = r#"{"qemu_bin":"qemu","args":[],"qemu_version":"9.1.2"}"#;
+    let config = parse_config_json(json).unwrap();
+    assert_eq!(config.qemu_version.as_deref(), Some("9.1.2"));
+}
+
+#[test]
+fn parse_config_json_empty_string_rejected() {
+    assert!(parse_config_json("").is_err());
+}
+
+#[test]
+fn parse_config_json_array_at_top_level_rejected() {
+    assert!(parse_config_json(r#"[{"qemu_bin":"q","args":[]}]"#).is_err());
+}
+
+#[test]
+fn load_config_from_dir_truncated_json() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("trunc.json"), r#"{"qemu_bin":"qemu","args"#).unwrap();
+    let err = load_config_from_dir(dir.path(), "trunc").unwrap_err();
+    assert!(matches!(err, VexError::ConfigParseFailed { .. }));
+}
+
+#[test]
+fn load_config_from_dir_preserves_all_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = r#"{
+        "qemu_bin": "qemu-system-aarch64",
+        "args": ["-m", "4G", "-smp", "8"],
+        "desc": "ARM64 dev box",
+        "qemu_version": "9.0.1"
+    }"#;
+    std::fs::write(dir.path().join("full.json"), json).unwrap();
+    let config = load_config_from_dir(dir.path(), "full").unwrap();
+    assert_eq!(config.qemu_bin, "qemu-system-aarch64");
+    assert_eq!(config.args, vec!["-m", "4G", "-smp", "8"]);
+    assert_eq!(config.desc.as_deref(), Some("ARM64 dev box"));
+    assert_eq!(config.qemu_version.as_deref(), Some("9.0.1"));
+}
+
+#[test]
+fn load_config_from_dir_empty_json_object() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("empty.json"), "{}").unwrap();
+    let err = load_config_from_dir(dir.path(), "empty").unwrap_err();
+    assert!(matches!(err, VexError::ConfigParseFailed { .. }));
+}
+
+#[test]
+fn load_config_from_dir_partial_json_missing_args() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("partial.json"), r#"{"qemu_bin":"qemu"}"#).unwrap();
+    let err = load_config_from_dir(dir.path(), "partial").unwrap_err();
+    assert!(matches!(err, VexError::ConfigParseFailed { .. }));
+}

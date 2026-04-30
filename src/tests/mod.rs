@@ -12,4 +12,5 @@ pub mod test_remote_parsing;
 pub mod test_remove;
 pub mod test_rename;
 pub mod test_save;
+pub mod test_serde;
 pub mod test_validation;

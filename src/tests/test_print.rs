@@ -64,3 +64,136 @@ fn print_full_output_format() {
     assert!(stdout.contains("4G"));
     assert!(stdout.contains("Full Command:"));
 }
+
+#[test]
+fn print_no_description() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex = vex_bin();
+
+    vex.command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "nodesc", "qemu-system-x86_64", "-m", "2G"])
+        .output()
+        .unwrap();
+
+    let output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "nodesc"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Configuration: nodesc"));
+    assert!(!stdout.contains("Description:"));
+}
+
+#[test]
+fn print_no_args_shows_placeholder() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex = vex_bin();
+
+    vex.command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "noargs", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    let output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "noargs"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("no arguments"));
+}
+
+#[test]
+fn print_shows_numbered_args() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex = vex_bin();
+
+    vex.command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "numbered",
+            "qemu-system-x86_64",
+            "-m",
+            "2G",
+            "-smp",
+            "4",
+        ])
+        .output()
+        .unwrap();
+
+    let output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "numbered"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("[0] -m"));
+    assert!(stdout.contains("[1] 2G"));
+    assert!(stdout.contains("[2] -smp"));
+    assert!(stdout.contains("[3] 4"));
+}
+
+#[test]
+fn print_shows_config_file_path() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex = vex_bin();
+
+    vex.command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["save", "pathcheck", "qemu-system-x86_64"])
+        .output()
+        .unwrap();
+
+    let output = vex
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "pathcheck"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Configuration File:"));
+    assert!(stdout.contains("pathcheck.json"));
+}
+
+#[test]
+fn print_invalid_name_rejected() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", ".."])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+}

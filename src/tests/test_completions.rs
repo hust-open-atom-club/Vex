@@ -43,3 +43,37 @@ fn completions_fish() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("vex") || stdout.contains("complete"));
 }
+
+#[test]
+fn completions_powershell() {
+    let output = vex_bin()
+        .command()
+        .args(["completions", "powershell"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.is_empty());
+}
+
+#[test]
+fn completions_elvish() {
+    let output = vex_bin()
+        .command()
+        .args(["completions", "elvish"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.is_empty());
+}
+
+#[test]
+fn completions_invalid_shell_rejected() {
+    let output = vex_bin()
+        .command()
+        .args(["completions", "notashell"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+}

@@ -70,3 +70,56 @@ fn exec_full_flag() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("/bin/true") || stdout.contains("Args:"));
 }
+
+#[test]
+fn exec_combined_debug_and_full_flags() {
+    let temp_dir = setup_config_dir();
+    save_config(&temp_dir, "combo-vm");
+    let config_dir = temp_dir.path().join(".vex");
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["exec", "-d", "-f", "combo-vm"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("DEBUG") || stdout.contains("GDB"));
+    assert!(stdout.contains("/bin/true") || stdout.contains("Args:"));
+}
+
+#[test]
+fn exec_invalid_name_rejected() {
+    let temp_dir = setup_config_dir();
+    let config_dir = temp_dir.path().join(".vex");
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["exec", ".."])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+}
+
+#[test]
+fn exec_nonexistent_binary_fails() {
+    let temp_dir = setup_config_dir();
+    let config_dir = temp_dir.path().join(".vex");
+
+    let config_json = r#"{
+        "qemu_bin": "/nonexistent/qemu-system-xyz",
+        "args": ["-m", "2G"],
+        "desc": null,
+        "qemu_version": null
+    }"#;
+    std::fs::write(config_dir.join("bad-bin.json"), config_json).unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["exec", "bad-bin"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(stderr.contains("launch") || stderr.contains("not found") || stderr.contains("qemu"));
+}
