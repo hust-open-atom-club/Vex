@@ -301,7 +301,7 @@ fn remote_config_not_found_empty_segments() {
 
 #[test]
 fn from_io_error_sets_unknown_path_and_generic_operation() {
-    let io_err = io::Error::new(io::ErrorKind::Other, "something");
+    let io_err = io::Error::other("something");
     let vex_err: VexError = io_err.into();
     match vex_err {
         VexError::IoError {
@@ -326,7 +326,7 @@ fn validation_error_empty_reason() {
 
 #[test]
 fn all_error_variants_implement_debug() {
-    let io_err = io::Error::new(io::ErrorKind::Other, "test");
+    let io_err = io::Error::other("test");
     let json_err = serde_json::from_str::<serde_json::Value>("!").unwrap_err();
     let json_err2 = serde_json::from_str::<serde_json::Value>("!").unwrap_err();
     let errors: Vec<VexError> = vec![

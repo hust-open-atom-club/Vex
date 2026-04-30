@@ -101,7 +101,9 @@ fn parse_multiple_colons_rejected() {
 #[test]
 fn parse_multiple_slashes() {
     let spec = RemoteSpec::parse("id/name/extra");
-    assert!(spec.is_err() || spec.unwrap().name == "name/extra" || true);
+    if let Ok(s) = spec {
+        assert!(s.name.contains('/') || s.name == "name");
+    }
 }
 
 #[test]
