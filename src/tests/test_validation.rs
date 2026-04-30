@@ -1,5 +1,6 @@
 use crate::config::{
-    QemuConfig, load_config_from_dir, parse_config_json, validate_config, validate_config_name,
+    QemuConfig, load_config_from_dir, parse_config_json, sanitize_config_name, validate_config,
+    validate_config_name,
 };
 use crate::error::VexError;
 
@@ -197,10 +198,54 @@ fn load_config_from_dir_invalid_json_returns_parse_failed() {
 }
 
 #[test]
-fn load_config_validates_name() {
+fn load_config_rejects_path_traversal() {
     use crate::config::load_config;
     let err = load_config("../escape").unwrap_err();
     assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn load_config_accepts_legacy_names_with_special_chars() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec![],
+        desc: None,
+        qemu_version: None,
+    };
+    let json = serde_json::to_string(&config).unwrap();
+    std::fs::write(dir.path().join("my vm.json"), &json).unwrap();
+    let loaded = load_config_from_dir(dir.path(), "my vm").unwrap();
+    assert_eq!(loaded.qemu_bin, "qemu");
+}
+
+#[test]
+fn sanitize_allows_special_chars_but_rejects_traversal() {
+    assert!(sanitize_config_name("my vm").is_ok());
+    assert!(sanitize_config_name("café").is_ok());
+    assert!(sanitize_config_name("虚拟机").is_ok());
+    assert!(sanitize_config_name("name@host").is_ok());
+
+    assert!(sanitize_config_name("").is_err());
+    assert!(sanitize_config_name(".").is_err());
+    assert!(sanitize_config_name("..").is_err());
+    assert!(sanitize_config_name("a/b").is_err());
+    assert!(sanitize_config_name("a\\b").is_err());
+    assert!(sanitize_config_name("name\0evil").is_err());
+    let long_name = "a".repeat(256);
+    assert!(sanitize_config_name(&long_name).is_err());
+}
+
+#[test]
+fn validate_is_stricter_than_sanitize() {
+    assert!(sanitize_config_name("my vm").is_ok());
+    assert!(validate_config_name("my vm").is_err());
+
+    assert!(sanitize_config_name("name@host").is_ok());
+    assert!(validate_config_name("name@host").is_err());
+
+    assert!(sanitize_config_name("my-vm").is_ok());
+    assert!(validate_config_name("my-vm").is_ok());
 }
 
 #[test]

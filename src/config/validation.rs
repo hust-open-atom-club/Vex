@@ -27,7 +27,7 @@ pub fn validate_config(config: &QemuConfig) -> VexResult<()> {
     Ok(())
 }
 
-pub fn validate_config_name(name: &str) -> VexResult<()> {
+pub fn sanitize_config_name(name: &str) -> VexResult<()> {
     if name.is_empty() {
         return Err(VexError::ValidationError {
             field: Some("name".to_string()),
@@ -62,6 +62,12 @@ pub fn validate_config_name(name: &str) -> VexResult<()> {
             reason: "configuration name cannot contain null bytes".to_string(),
         });
     }
+
+    Ok(())
+}
+
+pub fn validate_config_name(name: &str) -> VexResult<()> {
+    sanitize_config_name(name)?;
 
     if !name
         .chars()

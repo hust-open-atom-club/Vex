@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::QemuConfig;
-use crate::config::validation::{parse_config_json, validate_config_name};
+use crate::config::validation::{parse_config_json, sanitize_config_name};
 use crate::error::{VexError, VexResult};
 
 pub fn config_dir() -> VexResult<PathBuf> {
@@ -35,7 +35,7 @@ pub fn config_file(name: &str) -> VexResult<PathBuf> {
 }
 
 pub fn load_config(name: &str) -> VexResult<QemuConfig> {
-    validate_config_name(name)?;
+    sanitize_config_name(name)?;
     let dir = config_dir()?;
     load_config_from_dir(&dir, name)
 }
