@@ -76,6 +76,51 @@ pub enum VexError {
         editor: String,
         exit_code: Option<i32>,
     },
+
+    #[error("Unknown resource reference '${{res:{key}}}' in args[{arg_index}]")]
+    UnknownResourceReference { key: String, arg_index: usize },
+
+    #[error("Resource '{key}' file not found: {}", .path.display())]
+    ResourceFileNotFound { key: String, path: PathBuf },
+
+    #[error("Resource '{key}' checksum mismatch: expected {expected}, got {actual}")]
+    ResourceChecksumMismatch {
+        key: String,
+        expected: String,
+        actual: String,
+    },
+
+    #[error("Resource '{key}' cannot be published: {reason}")]
+    ResourceNotPublishable { key: String, reason: String },
+
+    #[error("Failed to fetch resource from '{url}': {reason}")]
+    ResourceFetchFailed { url: String, reason: String },
+
+    #[error("Resource scheme '{scheme}' is not supported (only http/https are downloadable)")]
+    UnsupportedResourceScheme { scheme: String },
+
+    #[error("Unsupported published config schema version: {version}")]
+    SchemaVersionUnsupported { version: u32 },
+
+    #[error("Hub request to '{url}' failed (status {status}): {body}")]
+    HubRequestFailed {
+        url: String,
+        status: u16,
+        body: String,
+    },
+
+    #[error("Failed to parse Hub index")]
+    HubIndexParseFailed {
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("Hub entry '{id}/{name}:{tag}' not found")]
+    HubEntryNotFound {
+        id: String,
+        name: String,
+        tag: String,
+    },
 }
 
 impl From<std::io::Error> for VexError {

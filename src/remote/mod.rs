@@ -1,3 +1,5 @@
+pub mod fetch;
+
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
@@ -81,7 +83,7 @@ pub struct PublishedConfig {
 impl PublishedConfig {
     fn new(spec: &RemoteSpec, tag: impl Into<String>, config: QemuConfig) -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             id: spec.id.clone(),
             name: spec.name.clone(),
             tag: tag.into(),
@@ -136,17 +138,37 @@ pub fn load_published_config(worktree: &Path, spec: &RemoteSpec) -> VexResult<Pu
         source: e,
     })?;
 
-    if let Ok(published) = serde_json::from_str::<PublishedConfig>(&content) {
-        return Ok(published);
-    }
-
-    let config: QemuConfig =
+    let value: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| VexError::ConfigParseFailed { source: e })?;
-    Ok(PublishedConfig::new(
-        spec,
-        spec.resolved_tag().to_string(),
-        config,
-    ))
+
+    let schema_version = value.get("schema_version").and_then(|v| v.as_u64());
+
+    match schema_version {
+        Some(2) => serde_json::from_value::<PublishedConfig>(value)
+            .map_err(|e| VexError::ConfigParseFailed { source: e }),
+        Some(1) => {
+            // v1 has no resources field; QemuConfig.resources has #[serde(default)],
+            // so it deserializes to an empty HashMap. schema_version stays 1 — we
+            // do not silently upgrade to 2.
+            serde_json::from_value::<PublishedConfig>(value)
+                .map_err(|e| VexError::ConfigParseFailed { source: e })
+        }
+        Some(other) => Err(VexError::SchemaVersionUnsupported {
+            version: other as u32,
+        }),
+        None => {
+            // Legacy: bare QemuConfig with no schema_version. Treat as v1.
+            let config: QemuConfig = serde_json::from_value(value)
+                .map_err(|e| VexError::ConfigParseFailed { source: e })?;
+            Ok(PublishedConfig {
+                schema_version: 1,
+                id: spec.id.clone(),
+                name: spec.name.clone(),
+                tag: spec.resolved_tag().to_string(),
+                config,
+            })
+        }
+    }
 }
 
 pub fn publish_config(
@@ -154,6 +176,7 @@ pub fn publish_config(
     config: &QemuConfig,
     force: bool,
 ) -> VexResult<PublishOutcome> {
+    validate_publishable(config)?;
     let (_temp_dir, worktree) = clone_remote_repo()?;
     let published_tag = spec.resolved_tag().to_string();
     let target_path = worktree.join(spec.tag_path());
@@ -190,6 +213,20 @@ pub fn publish_config(
     run_git(&worktree, &["push", "origin", &branch])?;
 
     Ok(PublishOutcome::Pushed)
+}
+
+fn validate_publishable(config: &QemuConfig) -> VexResult<()> {
+    for (key, r) in &config.resources {
+        if r.url.is_none() && r.sha256.is_none() {
+            return Err(VexError::ResourceNotPublishable {
+                key: key.clone(),
+                reason:
+                    "resource has neither url nor sha256; remote consumers cannot locate or verify it"
+                        .into(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn validate_segment(label: &str, value: &str) -> VexResult<()> {

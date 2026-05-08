@@ -123,3 +123,81 @@ fn exec_nonexistent_binary_fails() {
     let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
     assert!(stderr.contains("launch") || stderr.contains("not found") || stderr.contains("qemu"));
 }
+
+#[test]
+fn test_exec_substitutes_resource_path_into_args() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let sample_path = temp_dir.path().join("sample.img");
+    std::fs::write(&sample_path, b"").unwrap();
+
+    let sample_path_str = sample_path.to_str().unwrap();
+    let cfg = serde_json::json!({
+        "qemu_bin": "/bin/echo",
+        "args": ["${res:disk}"],
+        "resources": {
+            "disk": {
+                "path": sample_path_str,
+                "kind": "image"
+            }
+        }
+    });
+    std::fs::write(config_dir.join("echo-test.json"), cfg.to_string()).unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["exec", "echo-test"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "exec failed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(sample_path_str),
+        "expected stdout to contain '{}', got: {}",
+        sample_path_str,
+        stdout
+    );
+}
+
+#[test]
+fn test_exec_fails_when_resource_file_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let missing_path = temp_dir.path().join("not-here.img");
+    let cfg = serde_json::json!({
+        "qemu_bin": "/bin/echo",
+        "args": ["${res:disk}"],
+        "resources": {
+            "disk": {
+                "path": missing_path.to_str().unwrap(),
+                "kind": "image"
+            }
+        }
+    });
+    std::fs::write(config_dir.join("echo-test.json"), cfg.to_string()).unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["exec", "echo-test"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(
+        stderr.contains("file not found"),
+        "expected stderr to contain 'file not found', got: {}",
+        stderr
+    );
+}

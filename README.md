@@ -1,59 +1,201 @@
-# Vex Introduction
+# Vex
 
-Vex is a QEMU auxiliary command-line tool that addresses three core pain points: simplifying complex QEMU startup parameters, lowering the learning and usage barrier for QEMU, and supporting remote distribution of configuration files.
+Vex is a QEMU auxiliary command-line tool that addresses three core pain points:
+simplifying complex QEMU startup parameters, lowering the learning and usage
+barrier for QEMU, and supporting remote distribution of configuration files.
 
-It provides a Docker-like convenient experience, helping users quickly launch full-system simulation environments, suitable for embedded development, firmware development, operating system development, and other scenarios.
+It provides a Docker-like convenient experience, helping users quickly launch
+full-system simulation environments — suitable for embedded development,
+firmware development, operating system development, and similar scenarios.
 
-# Configuration
+## Features
 
-## VEX_CONFIG_DIR
+| Capability | Commands | Phase |
+|---|---|---|
+| Local config management | `save`, `list`, `print`, `rm`, `rename`, `edit`, `exec` | 1 |
+| Shell completions | `completions` | 1 |
+| Git remote distribution | `push`, `pull` | 2 |
+| Resource binding | `save --image/--firmware/--resource`, `resource` | 3 |
+| Resource cache | `cache` | 3 |
+| Vex Hub (HTTP read-only) | `hub` | 3 |
 
-Vex supports custom configuration storage location through the `VEX_CONFIG_DIR` environment variable.
+## Environment Variables
 
-- If `VEX_CONFIG_DIR` is set: Vex will save and load configurations from the specified directory
-- If `VEX_CONFIG_DIR` is not set: Vex uses `<user_home_dir>/.vex/configs` as the default storage location
+| Variable | Purpose | Default |
+|---|---|---|
+| `VEX_CONFIG_DIR` | Local config storage directory | `~/.vex/configs` |
+| `VEX_REMOTE_URL` | Git remote registry URL or local path | (none, push/pull errors out) |
+| `VEX_REMOTE_BRANCH` | Branch used for remote distribution | `main` |
+| `VEX_REMOTE_GIT_NAME` | Git author name for `vex push` commits | `Vex CLI` |
+| `VEX_REMOTE_GIT_EMAIL` | Git author email for `vex push` commits | `vex@example.invalid` |
+| `VEX_RESOURCE_CACHE_DIR` | Resource cache directory | `<config_dir parent>/resources` |
+| `VEX_HUB_URL` | Vex Hub base URL | `https://hub.vex.example/` (placeholder) |
 
-This allows for flexible configuration management across different environments and use cases.
+## Quickstart
 
-## VEX_REMOTE_URL
+### 1. Local: save and run
 
-Phase 2 remote distribution uses a Git repository as the remote registry backend.
+```bash
+vex save my-vm qemu-system-x86_64 -m 2G -smp 4
+vex list
+vex exec my-vm
+```
 
-- If `VEX_REMOTE_URL` is set: `vex push` and `vex pull` will use that Git repository URL or local repository path as the remote registry
-- If `VEX_REMOTE_URL` is not set: `vex push` and `vex pull` will fail with a configuration error
+### 2. Team: push to a Git registry, pull on another machine
 
-Optional environment variables:
+```bash
+# On the publishing machine:
+export VEX_REMOTE_URL=git@github.com:my-team/vex-registry.git
+vex save dev-box qemu-system-aarch64 -m 4G
+vex push team/dev-box:v1 dev-box
 
-- `VEX_REMOTE_BRANCH`: Branch to use for remote distribution. Defaults to `main`
-- `VEX_REMOTE_GIT_NAME`: Git author name used when `vex push` creates a commit
-- `VEX_REMOTE_GIT_EMAIL`: Git author email used when `vex push` creates a commit
+# On a teammate's machine:
+export VEX_REMOTE_URL=git@github.com:my-team/vex-registry.git
+vex pull team/dev-box:v1
+vex exec dev-box
+```
 
-Remote configurations are stored under `configs/<id>/<name>/<tag>.json` inside the remote repository. When you push an explicit tag such as `v1`, Vex also refreshes `configs/<id>/<name>/latest.json` so `vex pull <id/name>` can resolve the latest published version.
+### 3. Public: install from Vex Hub
 
-# Roadmap
+```bash
+export VEX_HUB_URL=https://hub.example.com/   # your Hub server
+vex hub search arm64
+vex hub install team/demo-arm64:v1 --fetch-resources
+vex exec demo-arm64
+```
 
-## Phase 1: Building Basic Command Capabilities
+> **Note**: The Hub server is not yet officially deployed. The default
+> `VEX_HUB_URL` (`hub.vex.example`) uses the RFC 2606 reserved TLD and is
+> intentionally non-resolvable. To use `vex hub`, run your own server that
+> implements [`docs/HUB_PROTOCOL.md`](docs/HUB_PROTOCOL.md) and point
+> `VEX_HUB_URL` at it.
 
-Focus on core functionality, implementing local management of QEMU configurations to meet rapid startup requirements.
+## Resource Binding
 
-- Save configuration: `vex save <name> [-y] [-d "desc"] <qemu-bin> [qemu args ...]` —— Save QEMU startup parameters as configurations, eliminating repetitive input. Can overwrite existing names with prompts, -y forces overwrite, and you can add a description for the configuration (optional) using double quotes;
-- Rename configuration: `vex rename [-y] [-d "desc"] <old_name> <new_name>` —— Rename saved configurations, maintaining name uniqueness and readability;
-- Execute configuration: `vex exec <name>` —— Directly execute saved configurations, one-click QEMU startup;
-- View configurations: `vex list` —— List all saved configurations;
-- Delete configuration: `vex rm <name>` —— Remove unused configurations, keeping the local environment clean.
-- Edit configuration: `vex edit <name>` —— Modify the configuration interactively, with an option to test-run (trial execution) after editing. 
+A configuration's `args` may reference external files (disk images, firmware
+blobs, etc.) declared as **resources**. Resources are bound by key, validated
+on save, and substituted into args at exec time using `${res:KEY}` placeholders.
 
-## Phase 2: Implementing Remote Configuration Distribution
+```bash
+# Bind a disk image at save time. Default behavior captures sha256 + size.
+vex save vm1 qemu-system-x86_64 \
+    --image disk=./ubuntu.qcow2 \
+    -m 2G \
+    -drive 'file=${res:disk},format=qcow2'
 
-Establish configuration sharing channels, supporting team collaboration and cross-environment reuse. Utilize GitHub repositories for resource hosting, allowing users to upload/download images, firmware files, etc., with version management and tag classification support.
+# Manage bindings on an existing config.
+vex resource add vm1 bios /usr/share/firmware/edk2.fd --kind firmware
+vex resource list vm1
+vex resource rm vm1 bios
 
-- Pull configuration: `vex pull <id/name>:[tag]` —— Pull configurations shared by others from remote sources, quickly reusing mature environments;
-- Push configuration: `vex push <id/remote_name>:[tag] <local_name>` —— Push local configurations to remote sources, facilitating team sharing or cross-device usage.
+# Skip checksum capture when files are large or missing locally.
+vex save vm2 qemu-system-arm \
+    --no-checksum --image disk=/data/big.img
 
-## Phase 3: Supporting Configuration-Associated Images and Firmware, Providing Vex Hub
+# Run — Vex verifies every bound file exists, then substitutes paths.
+vex exec vm1
+```
 
-Complete the "configuration + resources" full pipeline, solving the scattered management issues of images/firmware, and building a complete Vex ecosystem.
+`${res:KEY}` placeholders only match keys conforming to
+`[A-Za-z_][A-Za-z0-9_]*`. Other forms (e.g. `${res:my-disk}`) are left as
+literal text. Unknown keys at exec time raise an `UnknownResourceReference`
+error.
 
-Configuration resource association: Support binding specified image files (such as system images) and firmware files in Vex configurations. When executing the exec command, resources are automatically loaded without manual path specification.
+## Resource Cache
 
-Launch Vex Hub: Create an official resource and configuration display platform, providing rich and popular simulation platform environment setup solutions. In the Hub, users can directly obtain complete "configuration + associated resources" packages, with one-click pull and launch of simulation environments, eliminating the need for separate file preparation.
+When `vex pull --fetch-resources` or `vex hub install --fetch-resources`
+downloads files referenced by `ResourceRef.url`, they land in a unified
+content-addressed cache.
+
+- **Default location**: `<config_dir parent>/resources` (i.e. `~/.vex/resources`
+  for the default `VEX_CONFIG_DIR`).
+- **Override**: `export VEX_RESOURCE_CACHE_DIR=/path/to/cache`.
+- **Layout**: `<root>/<sha256[0..2]>/<sha256[2..]>` — every object is named
+  by its content hash, so multiple configurations referencing the same file
+  share storage automatically.
+- **Maintenance**:
+
+  ```bash
+  vex cache list                      # full listing with reference counts
+  vex cache info <hash-or-prefix>     # details of one object
+  vex cache rm <hash> [--force]       # delete (force required if referenced)
+  vex cache prune [--dry-run]         # delete every unreferenced object
+  ```
+
+Hash arguments accept either the full 64 hex characters or any unique prefix
+of at least 4 characters.
+
+## Vex Hub
+
+The Vex Hub is a read-only HTTP service that distributes curated configurations
+and resource metadata. It serves the same `PublishedConfig` v2 format that
+`vex push` writes to a Git remote, just over HTTP — Git remotes and the Hub
+are complementary, not competing.
+
+```bash
+vex hub list --kind demo            # browse the catalog, optionally filtered
+vex hub search arm64                # substring match on id / name / summary
+vex hub info team/demo-arm64:v1     # show details of one entry
+vex hub install team/demo-arm64:v1 --as my-arm --fetch-resources
+```
+
+Protocol specification: [`docs/HUB_PROTOCOL.md`](docs/HUB_PROTOCOL.md).
+
+## Roadmap
+
+### Phase 1: Local command capabilities ✅ 0.1.0
+- `save`, `rename`, `rm`, `list`, `print`, `exec`, `edit`, `completions`.
+
+### Phase 2: Remote distribution ✅ 0.2.0
+- `push`, `pull` over a Git registry; `PublishedConfig` schema v1.
+
+### Phase 3: Resource binding + Vex Hub ✅ 0.3.0
+- Resource binding (`${res:KEY}`, `--image/--firmware/--resource`, `vex resource`).
+- Content-addressed resource cache (`vex cache`, `VEX_RESOURCE_CACHE_DIR`).
+- Vex Hub HTTP client (`vex hub`, `VEX_HUB_URL`, `docs/HUB_PROTOCOL.md`).
+- `PublishedConfig` schema v2 with `url` / `sha256` / `size` per resource.
+
+### Phase 4: Vex Hub Server (planned)
+- Reference Hub server implementation following `docs/HUB_PROTOCOL.md`.
+- Web UI for browsing entries.
+- Resource signing and signature verification.
+- Optional: pagination, server-side search backend, multi-tenant namespaces.
+
+## Configuration File Format
+
+Each saved configuration is a JSON file at `<VEX_CONFIG_DIR>/<name>.json`.
+The schema is the `QemuConfig` struct in
+[`src/config/types.rs`](src/config/types.rs):
+
+```json
+{
+  "qemu_bin": "qemu-system-x86_64",
+  "args": ["-m", "2G", "-drive", "file=${res:disk}"],
+  "desc": "Ubuntu development VM",
+  "qemu_version": "9.0.1",
+  "resources": {
+    "disk": {
+      "path": "/var/cache/vex/aa/bbbb...",
+      "kind": "image",
+      "sha256": "aabb...",
+      "size": 1073741824,
+      "url": "https://example.com/ubuntu.qcow2"
+    }
+  }
+}
+```
+
+`desc`, `qemu_version`, `resources`, and the optional fields inside each
+`ResourceRef` are omitted from output when unset.
+
+## Building from Source
+
+```bash
+cargo build --release
+```
+
+Requires Rust 1.85+ (edition 2024).
+
+## License
+
+See [LICENSE](LICENSE).

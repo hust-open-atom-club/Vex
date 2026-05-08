@@ -344,3 +344,169 @@ fn test_save_preserves_all_args() {
     let args = config["args"].as_array().unwrap();
     assert_eq!(args.len(), 10);
 }
+
+#[test]
+fn test_save_with_image_flag_records_resource() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let img = temp_dir.path().join("d.img");
+    std::fs::write(&img, b"").unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "vm1",
+            "--image",
+            &format!("disk={}", img.to_str().unwrap()),
+            "qemu-system-x86_64",
+            "-m",
+            "1G",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "save failed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = std::fs::read_to_string(config_dir.join("vm1.json")).unwrap();
+    let cfg: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let disk = &cfg["resources"]["disk"];
+    assert_eq!(disk["kind"], "image");
+    assert_eq!(disk["path"], img.to_str().unwrap());
+    let sha = disk["sha256"].as_str().unwrap();
+    assert_eq!(sha.len(), 64);
+    assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
+    assert_eq!(disk["size"], 0);
+}
+
+#[test]
+fn test_save_with_no_checksum_skips_hash() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let img = temp_dir.path().join("d.img");
+    std::fs::write(&img, b"hello").unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "vm2",
+            "--no-checksum",
+            "--image",
+            &format!("disk={}", img.to_str().unwrap()),
+            "qemu-system-x86_64",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let content = std::fs::read_to_string(config_dir.join("vm2.json")).unwrap();
+    let cfg: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let disk = &cfg["resources"]["disk"];
+    assert!(disk.get("sha256").is_none() || disk["sha256"].is_null());
+    assert!(disk.get("size").is_none() || disk["size"].is_null());
+}
+
+#[test]
+fn test_save_warns_on_missing_resource_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "miss-vm",
+            "--image",
+            "disk=/nonexistent/path/zzzz",
+            "qemu-system-x86_64",
+            "-m",
+            "1G",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(
+        stderr.contains("warning"),
+        "expected stderr to contain 'warning', got: {}",
+        stderr
+    );
+    assert!(stderr.contains("disk"));
+
+    let content = std::fs::read_to_string(config_dir.join("miss-vm.json")).unwrap();
+    let cfg: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let disk = &cfg["resources"]["disk"];
+    assert_eq!(disk["path"], "/nonexistent/path/zzzz");
+    assert!(disk.get("sha256").is_none() || disk["sha256"].is_null());
+    assert!(disk.get("size").is_none() || disk["size"].is_null());
+}
+
+#[test]
+fn test_save_rejects_duplicate_resource_key() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args([
+            "save",
+            "dup-vm",
+            "--image",
+            "disk=/a",
+            "--firmware",
+            "disk=/b",
+            "qemu-system-x86_64",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    assert!(
+        stderr.contains("more than once") || stderr.contains("duplicate"),
+        "expected stderr to flag duplicate, got: {}",
+        stderr
+    );
+}
