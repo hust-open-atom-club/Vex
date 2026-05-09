@@ -34,6 +34,40 @@ pub fn config_file(name: &str) -> VexResult<PathBuf> {
     Ok(dir.join(format!("{}.json", name)))
 }
 
+pub fn resource_cache_dir() -> VexResult<PathBuf> {
+    let dir = match std::env::var("VEX_RESOURCE_CACHE_DIR") {
+        Ok(path) if !path.is_empty() => PathBuf::from(path),
+        _ => {
+            // Mirror the env-resolution logic of config_dir without invoking it
+            // (config_dir() would mkdir its own target, which is the wrong scope here).
+            let base = match std::env::var("VEX_CONFIG_DIR") {
+                Ok(path) if !path.is_empty() => PathBuf::from(path),
+                _ => {
+                    let home = dirs::home_dir().ok_or_else(|| VexError::IoError {
+                        path: PathBuf::from("~"),
+                        operation: "resolve home directory".to_string(),
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "failed to get user home directory",
+                        ),
+                    })?;
+                    home.join(".vex").join("configs")
+                }
+            };
+            base.parent()
+                .map(|p| p.join("resources"))
+                .unwrap_or_else(|| base.join("..").join("resources"))
+        }
+    };
+
+    fs::create_dir_all(&dir).map_err(|e| VexError::IoError {
+        path: dir.clone(),
+        operation: "create resource cache directory".to_string(),
+        source: e,
+    })?;
+    Ok(dir)
+}
+
 pub fn load_config(name: &str) -> VexResult<QemuConfig> {
     sanitize_config_name(name)?;
     let dir = config_dir()?;

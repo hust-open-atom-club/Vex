@@ -1,4 +1,5 @@
 use proptest::prelude::*;
+use std::collections::HashMap;
 
 use crate::config::{QemuConfig, parse_config_json, validate_config_name};
 use crate::remote::RemoteSpec;
@@ -33,6 +34,7 @@ proptest! {
             args,
             desc,
             qemu_version: version,
+            resources: HashMap::new(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed = parse_config_json(&json).unwrap();
@@ -95,6 +97,7 @@ proptest! {
             args,
             desc,
             qemu_version: None,
+            resources: HashMap::new(),
         };
         let _ = validate_config(&config);
     }
@@ -109,7 +112,7 @@ proptest! {
     ) {
         use crate::remote::PublishedConfig;
         if id != "." && id != ".." && name != "." && name != ".." && tag != "." && tag != ".." {
-            let config = QemuConfig { qemu_bin: bin, args, desc: None, qemu_version: None };
+            let config = QemuConfig { qemu_bin: bin, args, desc: None, qemu_version: None, resources: HashMap::new() };
             let published = PublishedConfig {
                 schema_version: 1,
                 id: id.clone(),

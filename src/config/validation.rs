@@ -24,6 +24,103 @@ pub fn validate_config(config: &QemuConfig) -> VexResult<()> {
         }
     }
 
+    for (key, resource) in &config.resources {
+        validate_resource_key(key)?;
+        validate_resource_path(key, &resource.path)?;
+        if let Some(sha256) = &resource.sha256 {
+            validate_resource_sha256(key, sha256)?;
+        }
+        if let Some(url) = &resource.url {
+            validate_resource_url(key, url)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_resource_url(key: &str, url: &str) -> VexResult<()> {
+    if url.contains('\0') {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].url", key)),
+            reason: "resource url cannot contain null bytes".to_string(),
+        });
+    }
+    let scheme = if let Some((s, rest)) = url.split_once("://") {
+        if rest.is_empty() || rest.starts_with('/') {
+            return Err(VexError::ValidationError {
+                field: Some(format!("resources[{}].url", key)),
+                reason: "resource url must include a host after the scheme".to_string(),
+            });
+        }
+        s
+    } else {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].url", key)),
+            reason: "resource url must start with http://, https://, or oci://".to_string(),
+        });
+    };
+    if !matches!(scheme, "http" | "https" | "oci") {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].url", key)),
+            reason: "resource url must start with http://, https://, or oci://".to_string(),
+        });
+    }
+    Ok(())
+}
+
+pub fn validate_resource_key(key: &str) -> VexResult<()> {
+    if key.is_empty() {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}]", key)),
+            reason: "resource key cannot be empty".to_string(),
+        });
+    }
+
+    let mut chars = key.chars();
+    let first = chars.next().unwrap();
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}]", key)),
+            reason: "resource key must start with an ASCII letter or underscore".to_string(),
+        });
+    }
+
+    for c in chars {
+        if !(c.is_ascii_alphanumeric() || c == '_') {
+            return Err(VexError::ValidationError {
+                field: Some(format!("resources[{}]", key)),
+                reason: "resource key may only contain ASCII letters, digits, or underscore"
+                    .to_string(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_resource_path(key: &str, path: &str) -> VexResult<()> {
+    if path.is_empty() || path.trim().is_empty() {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].path", key)),
+            reason: "resource path cannot be empty or whitespace-only".to_string(),
+        });
+    }
+    if path.contains('\0') {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].path", key)),
+            reason: "resource path cannot contain null bytes".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_resource_sha256(key: &str, sha256: &str) -> VexResult<()> {
+    if sha256.len() != 64 || !sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(VexError::ValidationError {
+            field: Some(format!("resources[{}].sha256", key)),
+            reason: "resource sha256 must be exactly 64 ASCII hexadecimal characters".to_string(),
+        });
+    }
     Ok(())
 }
 

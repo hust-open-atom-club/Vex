@@ -1,4 +1,6 @@
-use crate::commands::exec::substitute_params;
+use crate::commands::exec::{check_resource_files, substitute_params, substitute_resources};
+use crate::config::{ResourceKind, ResourceRef};
+use crate::error::VexError;
 use std::collections::HashMap;
 
 #[test]
@@ -199,4 +201,122 @@ fn test_substitute_double_dollar_sign() {
     let args = vec!["$${NOT_A_VAR}".to_string()];
     let result = substitute_params(&args, |k| env.get(k).cloned());
     assert_eq!(result, vec!["$${NOT_A_VAR}"]);
+}
+
+fn make_resource(path: &str, kind: ResourceKind) -> ResourceRef {
+    ResourceRef {
+        path: path.to_string(),
+        kind,
+        sha256: None,
+        size: None,
+        url: None,
+    }
+}
+
+#[test]
+fn test_substitute_resources_replaces_known_key() {
+    let mut resources = HashMap::new();
+    resources.insert(
+        "disk".to_string(),
+        make_resource("/tmp/x.img", ResourceKind::Image),
+    );
+    let args = vec![
+        "-drive".to_string(),
+        "file=${res:disk},format=raw".to_string(),
+    ];
+    let result = substitute_resources(&args, &resources).unwrap();
+    assert_eq!(result[0], "-drive");
+    assert_eq!(result[1], "file=/tmp/x.img,format=raw");
+}
+
+#[test]
+fn test_substitute_resources_handles_multiple_occurrences_in_one_arg() {
+    let mut resources = HashMap::new();
+    resources.insert("a".to_string(), make_resource("/A", ResourceKind::Image));
+    resources.insert("b".to_string(), make_resource("/B", ResourceKind::Firmware));
+    let args = vec!["${res:a}+${res:b}+${res:a}".to_string()];
+    let result = substitute_resources(&args, &resources).unwrap();
+    assert_eq!(result, vec!["/A+/B+/A"]);
+}
+
+#[test]
+fn test_substitute_resources_unknown_key_errors() {
+    let resources: HashMap<String, ResourceRef> = HashMap::new();
+    let args = vec!["${res:ghost}".to_string()];
+    let err = substitute_resources(&args, &resources).unwrap_err();
+    match err {
+        VexError::UnknownResourceReference { key, arg_index } => {
+            assert_eq!(key, "ghost");
+            assert_eq!(arg_index, 0);
+        }
+        other => panic!("expected UnknownResourceReference, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_substitute_resources_arg_index_reflects_position() {
+    let resources: HashMap<String, ResourceRef> = HashMap::new();
+    let args = vec![
+        "ok".to_string(),
+        "still-ok".to_string(),
+        "${res:bad}".to_string(),
+    ];
+    let err = substitute_resources(&args, &resources).unwrap_err();
+    match err {
+        VexError::UnknownResourceReference { arg_index, .. } => assert_eq!(arg_index, 2),
+        other => panic!("expected UnknownResourceReference, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_substitute_resources_invalid_key_pattern_is_left_alone() {
+    let resources: HashMap<String, ResourceRef> = HashMap::new();
+    let args = vec![
+        "${res:my-disk}".to_string(),
+        "${res:1x}".to_string(),
+        "${res:}".to_string(),
+    ];
+    let result = substitute_resources(&args, &resources).unwrap();
+    assert_eq!(result[0], "${res:my-disk}");
+    assert_eq!(result[1], "${res:1x}");
+    assert_eq!(result[2], "${res:}");
+}
+
+#[test]
+fn test_substitute_resources_does_not_touch_env_placeholders() {
+    let mut resources = HashMap::new();
+    resources.insert("disk".to_string(), make_resource("/D", ResourceKind::Image));
+    let args = vec!["${HOME}".to_string(), "${res:disk}".to_string()];
+    let result = substitute_resources(&args, &resources).unwrap();
+    assert_eq!(result[0], "${HOME}");
+    assert_eq!(result[1], "/D");
+}
+
+#[test]
+fn test_check_resource_files_ok_for_existing_file() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let mut resources = HashMap::new();
+    resources.insert(
+        "disk".to_string(),
+        make_resource(tmp.path().to_str().unwrap(), ResourceKind::Image),
+    );
+    assert!(check_resource_files(&resources).is_ok());
+}
+
+#[test]
+fn test_check_resource_files_errors_for_missing() {
+    let mut resources = HashMap::new();
+    let missing = "/tmp/definitely-not-exists-vex-test-zzz-09182374";
+    resources.insert(
+        "disk".to_string(),
+        make_resource(missing, ResourceKind::Image),
+    );
+    let err = check_resource_files(&resources).unwrap_err();
+    match err {
+        VexError::ResourceFileNotFound { key, path } => {
+            assert_eq!(key, "disk");
+            assert_eq!(path, std::path::PathBuf::from(missing));
+        }
+        other => panic!("expected ResourceFileNotFound, got {:?}", other),
+    }
 }

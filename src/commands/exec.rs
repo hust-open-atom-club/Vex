@@ -1,9 +1,10 @@
 use clap::Args;
 use regex::Regex;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::config::{QemuConfig, load_config};
+use crate::config::{QemuConfig, ResourceRef, load_config};
 use crate::error::{VexError, VexResult};
 use crate::utils::qemu::get_qemu_version;
 
@@ -37,6 +38,9 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> VexResult<()> {
     let mut exec_args = config.args.clone();
 
     exec_args = substitute_params(&exec_args, |k| std::env::var(k).ok());
+
+    check_resource_files(&config.resources)?;
+    exec_args = substitute_resources(&exec_args, &config.resources)?;
 
     if debug {
         exec_args.push("-s".to_string());
@@ -81,6 +85,18 @@ fn print_startup_message(
     if full {
         println!("  QEMU: {}", config.qemu_bin);
         println!("  Args: {:?}", args);
+        if !config.resources.is_empty() {
+            println!("  Resources:");
+            for (key, r) in &config.resources {
+                println!(
+                    "    {} -> {} ({:?}{})",
+                    key,
+                    r.path,
+                    r.kind,
+                    r.sha256.as_ref().map(|_| ", sha256").unwrap_or("")
+                );
+            }
+        }
     }
 
     if debug {
@@ -111,4 +127,40 @@ pub(crate) fn substitute_params_with_map(
     env: &HashMap<String, String>,
 ) -> Vec<String> {
     substitute_params(args, |k| env.get(k).cloned())
+}
+
+pub(crate) fn substitute_resources(
+    args: &[String],
+    resources: &HashMap<String, ResourceRef>,
+) -> VexResult<Vec<String>> {
+    let re = Regex::new(r"\$\{res:([A-Za-z_][A-Za-z0-9_]*)\}").unwrap();
+    let mut out = Vec::with_capacity(args.len());
+    for (i, arg) in args.iter().enumerate() {
+        for caps in re.captures_iter(arg) {
+            let key = &caps[1];
+            if !resources.contains_key(key) {
+                return Err(VexError::UnknownResourceReference {
+                    key: key.to_string(),
+                    arg_index: i,
+                });
+            }
+        }
+        let replaced = re.replace_all(arg, |caps: &regex::Captures| {
+            resources[&caps[1]].path.clone()
+        });
+        out.push(replaced.into_owned());
+    }
+    Ok(out)
+}
+
+pub(crate) fn check_resource_files(resources: &HashMap<String, ResourceRef>) -> VexResult<()> {
+    for (key, r) in resources {
+        if !Path::new(&r.path).exists() {
+            return Err(VexError::ResourceFileNotFound {
+                key: key.clone(),
+                path: PathBuf::from(&r.path),
+            });
+        }
+    }
+    Ok(())
 }

@@ -1,8 +1,9 @@
 use crate::config::{
-    QemuConfig, load_config_from_dir, parse_config_json, sanitize_config_name, validate_config,
-    validate_config_name,
+    QemuConfig, ResourceKind, ResourceRef, load_config_from_dir, parse_config_json,
+    sanitize_config_name, validate_config, validate_config_name,
 };
 use crate::error::VexError;
+use std::collections::HashMap;
 
 #[test]
 fn validate_valid_config() {
@@ -11,6 +12,7 @@ fn validate_valid_config() {
         args: vec!["-m".into(), "2G".into()],
         desc: Some("test".into()),
         qemu_version: Some("8.2.0".into()),
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_ok());
 }
@@ -22,6 +24,7 @@ fn validate_empty_binary_rejected() {
         args: vec![],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     let err = validate_config(&config).unwrap_err();
     assert!(matches!(err, VexError::ValidationError { .. }));
@@ -115,6 +118,7 @@ fn validate_whitespace_only_binary_rejected() {
         args: vec![],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_err());
 }
@@ -126,6 +130,7 @@ fn validate_empty_arg_rejected() {
         args: vec!["".into()],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_err());
 }
@@ -137,6 +142,7 @@ fn validate_whitespace_only_arg_rejected() {
         args: vec!["-m".into(), "  ".into()],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_err());
 }
@@ -148,6 +154,7 @@ fn validate_null_byte_arg_rejected() {
         args: vec!["-m\0evil".into()],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_err());
 }
@@ -159,6 +166,7 @@ fn validate_valid_args_accepted() {
         args: vec!["-m".into(), "2G".into(), "-smp".into(), "4".into()],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_ok());
 }
@@ -171,6 +179,7 @@ fn load_config_from_dir_existing_config() {
         args: vec!["-m".into(), "1G".into()],
         desc: Some("test vm".into()),
         qemu_version: Some("9.0".into()),
+        resources: HashMap::new(),
     };
     let json = serde_json::to_string_pretty(&config).unwrap();
     std::fs::write(dir.path().join("myvm.json"), &json).unwrap();
@@ -212,6 +221,7 @@ fn load_config_accepts_legacy_names_with_special_chars() {
         args: vec![],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     let json = serde_json::to_string(&config).unwrap();
     std::fs::write(dir.path().join("my vm.json"), &json).unwrap();
@@ -255,6 +265,7 @@ fn validate_null_byte_in_binary_rejected() {
         args: vec![],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_ok());
 }
@@ -266,6 +277,7 @@ fn validate_config_no_args_accepted() {
         args: vec![],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_ok());
 }
@@ -277,6 +289,7 @@ fn validate_config_many_args_accepted() {
         args: (0..100).map(|i| format!("-arg{}", i)).collect(),
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     assert!(validate_config(&config).is_ok());
 }
@@ -288,6 +301,7 @@ fn validate_multiple_empty_args_reports_first_index() {
         args: vec!["-m".into(), "".into(), "".into()],
         desc: None,
         qemu_version: None,
+        resources: HashMap::new(),
     };
     let err = validate_config(&config).unwrap_err();
     match err {
@@ -308,6 +322,7 @@ fn validate_null_byte_at_various_arg_positions() {
             args,
             desc: None,
             qemu_version: None,
+            resources: HashMap::new(),
         };
         let err = validate_config(&config).unwrap_err();
         match err {
@@ -475,4 +490,168 @@ fn load_config_from_dir_partial_json_missing_args() {
     std::fs::write(dir.path().join("partial.json"), r#"{"qemu_bin":"qemu"}"#).unwrap();
     let err = load_config_from_dir(dir.path(), "partial").unwrap_err();
     assert!(matches!(err, VexError::ConfigParseFailed { .. }));
+}
+
+fn config_with_resource(key: &str, resource: ResourceRef) -> QemuConfig {
+    let mut resources = HashMap::new();
+    resources.insert(key.to_string(), resource);
+    QemuConfig {
+        qemu_bin: "qemu".into(),
+        args: vec![],
+        desc: None,
+        qemu_version: None,
+        resources,
+    }
+}
+
+#[test]
+fn test_validate_config_accepts_valid_resources() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "/var/lib/vex/disk.qcow2".to_string(),
+            kind: ResourceKind::Image,
+            sha256: Some("a".repeat(64)),
+            size: Some(1024),
+            url: None,
+        },
+    );
+    assert!(validate_config(&config).is_ok());
+}
+
+#[test]
+fn test_validate_config_rejects_empty_resource_key() {
+    let config = config_with_resource(
+        "",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: None,
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    match err {
+        VexError::ValidationError { field, .. } => {
+            assert_eq!(field.as_deref(), Some("resources[]"));
+        }
+        _ => panic!("expected ValidationError"),
+    }
+}
+
+#[test]
+fn test_validate_config_rejects_resource_key_starting_with_digit() {
+    let config = config_with_resource(
+        "1disk",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: None,
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn test_validate_config_rejects_resource_key_with_dash() {
+    let config = config_with_resource(
+        "my-disk",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: None,
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn test_validate_config_rejects_empty_resource_path() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "".to_string(),
+            kind: ResourceKind::Image,
+            sha256: None,
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    match err {
+        VexError::ValidationError { field, .. } => {
+            assert_eq!(field.as_deref(), Some("resources[disk].path"));
+        }
+        _ => panic!("expected ValidationError"),
+    }
+}
+
+#[test]
+fn test_validate_config_rejects_resource_path_with_null_byte() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "/tmp/x\0y".to_string(),
+            kind: ResourceKind::Image,
+            sha256: None,
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn test_validate_config_rejects_short_sha256() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: Some("abc".into()),
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn test_validate_config_rejects_non_hex_sha256() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: Some("g".repeat(64)),
+            size: None,
+            url: None,
+        },
+    );
+    let err = validate_config(&config).unwrap_err();
+    assert!(matches!(err, VexError::ValidationError { .. }));
+}
+
+#[test]
+fn test_validate_config_accepts_uppercase_hex_sha256() {
+    let config = config_with_resource(
+        "disk",
+        ResourceRef {
+            path: "/x".to_string(),
+            kind: ResourceKind::Image,
+            sha256: Some("A".repeat(64)),
+            size: None,
+            url: None,
+        },
+    );
+    assert!(validate_config(&config).is_ok());
 }
