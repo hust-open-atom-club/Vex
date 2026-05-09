@@ -5,6 +5,20 @@ All notable changes to Vex are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-09
+
+### Fixed
+- `vex cache prune` no longer deletes cached objects that are referenced
+  only by `resources[*].path` without a `sha256` (the case when remote
+  configs publish url-only resources and `--fetch-resources` populates
+  the cache without backfilling the hash).
+- `vex pull --fetch-resources` and `vex hub install --fetch-resources`
+  now backfill `sha256` and `size` on the downloaded resource so that
+  cache reference tracking works without the path-fallback above.
+- `vex hub list` no longer prefixes `latest_tag` with `v`, which produced
+  invalid identifiers like `vlatest` or `vv1` that users could not pass
+  back into `vex hub install`.
+
 ## [0.3.1] - 2026-05-09
 
 ### Fixed

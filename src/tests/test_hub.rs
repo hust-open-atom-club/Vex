@@ -611,3 +611,137 @@ fn test_hub_install_rejects_absolute_path_in_as() {
     assert!(!std::path::Path::new(&target).exists());
     stop.store(true, Ordering::Relaxed);
 }
+
+#[test]
+fn test_hub_install_fetch_resources_backfills_sha256_when_remote_omits_it() {
+    let (listener, base_url) = bind_listener();
+    let payload = b"hub-omits-sha-payload".to_vec();
+    let payload_for_handler = payload.clone();
+    let expected_sha = sha256_hex_of_bytes(&payload);
+    let resource_url = format!("{}res/disk.img", base_url);
+
+    // Remote PublishedConfig publishes the resource by url only — no sha256.
+    let cfg_json = serde_json::json!({
+        "schema_version": 2,
+        "id": "team",
+        "name": "demo",
+        "tag": "v1",
+        "config": {
+            "qemu_bin": "qemu-system-x86_64",
+            "args": ["${res:disk}"],
+            "resources": {
+                "disk": {
+                    "path": "/placeholder",
+                    "kind": "image",
+                    "url": resource_url
+                }
+            }
+        }
+    })
+    .to_string()
+    .into_bytes();
+
+    let stop = serve(listener, move |path| {
+        if path == "/configs/team/demo/v1.json" {
+            (200, cfg_json.clone())
+        } else if path == "/res/disk.img" {
+            (200, payload_for_handler.clone())
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+
+    let (_g, cfg) = temp_config_dir();
+    let cache = _g.path().join("cache");
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args([
+            "hub",
+            "install",
+            "team/demo:v1",
+            "--fetch-resources",
+            "--resource-dir",
+            cache.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let local = std::fs::read_to_string(cfg.join("demo.json")).unwrap();
+    let cfg_value: serde_json::Value = serde_json::from_str(&local).unwrap();
+    let disk = &cfg_value["resources"]["disk"];
+    assert_eq!(
+        disk["sha256"].as_str(),
+        Some(expected_sha.as_str()),
+        "sha256 was not backfilled: {:?}",
+        disk
+    );
+    assert_eq!(
+        disk["size"].as_u64(),
+        Some(payload.len() as u64),
+        "size was not backfilled: {:?}",
+        disk
+    );
+
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[test]
+fn test_hub_list_does_not_prefix_v_to_tag() {
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/index.json" {
+            let body = r#"{
+                "schema_version": 1,
+                "entries": [
+                    {"id":"a","name":"one","latest_tag":"latest","tags":["latest"],"summary":"A","kind":"demo","updated_at":""},
+                    {"id":"b","name":"two","latest_tag":"v1","tags":["v1"],"summary":"B","kind":"demo","updated_at":""},
+                    {"id":"c","name":"three","latest_tag":"main","tags":["main"],"summary":"C","kind":"demo","updated_at":""}
+                ]
+            }"#;
+            (200, body.as_bytes().to_vec())
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+    let (_g, cfg) = temp_config_dir();
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args(["hub", "list"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(stdout.contains("latest"));
+    assert!(stdout.contains("v1"));
+    assert!(stdout.contains("main"));
+
+    assert!(
+        !stdout.contains("vlatest"),
+        "tag should not be prefixed with 'v': {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("vv1"),
+        "tag should not be prefixed with 'v': {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("vmain"),
+        "tag should not be prefixed with 'v': {}",
+        stdout
+    );
+
+    stop.store(true, Ordering::Relaxed);
+}

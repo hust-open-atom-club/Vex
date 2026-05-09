@@ -459,3 +459,75 @@ fn test_pull_with_fetch_resources_downloads_to_cache() {
 
     stop.store(true, Ordering::Relaxed);
 }
+
+#[test]
+fn test_pull_fetch_resources_backfills_sha256_when_remote_omits_it() {
+    let (_remote_guard, remote_repo) = create_bare_remote();
+    let payload = b"omitted-sha-payload".to_vec();
+    let expected_sha = sha256_hex(&payload);
+    let (port, stop) = start_http_server(payload.clone());
+
+    // Note: remote v2 config publishes url-only — sha256 is absent.
+    let v2_payload = serde_json::json!({
+        "schema_version": 2,
+        "id": "team",
+        "name": "nosha",
+        "tag": "latest",
+        "config": {
+            "qemu_bin": "qemu-system-x86_64",
+            "args": ["${res:disk}"],
+            "resources": {
+                "disk": {
+                    "path": "/placeholder",
+                    "kind": "image",
+                    "url": format!("http://127.0.0.1:{}/x.img", port)
+                }
+            }
+        }
+    })
+    .to_string();
+    write_published_to_remote(&remote_repo, "team", "nosha", "latest", &v2_payload);
+
+    let target = TempDir::new().unwrap();
+    let target_dir = target.path().join(".vex-target");
+    std::fs::create_dir_all(&target_dir).unwrap();
+    let cache = target.path().join("cache");
+
+    let pull = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &target_dir)
+        .env("VEX_REMOTE_URL", &remote_repo)
+        .env("VEX_REMOTE_BRANCH", "main")
+        .args([
+            "pull",
+            "--fetch-resources",
+            "--resource-dir",
+            cache.to_str().unwrap(),
+            "team/nosha",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        pull.status.success(),
+        "pull failed: stderr={}",
+        String::from_utf8_lossy(&pull.stderr)
+    );
+
+    let local = std::fs::read_to_string(target_dir.join("nosha.json")).unwrap();
+    let cfg: serde_json::Value = serde_json::from_str(&local).unwrap();
+    let disk = &cfg["resources"]["disk"];
+    assert_eq!(
+        disk["sha256"].as_str(),
+        Some(expected_sha.as_str()),
+        "sha256 was not backfilled: {:?}",
+        disk
+    );
+    assert_eq!(
+        disk["size"].as_u64(),
+        Some(payload.len() as u64),
+        "size was not backfilled: {:?}",
+        disk
+    );
+
+    stop.store(true, Ordering::Relaxed);
+}

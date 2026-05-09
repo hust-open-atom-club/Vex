@@ -329,3 +329,42 @@ fn test_cache_respects_vex_resource_cache_dir() {
     // The custom cache hash should NOT be visible when env var is unset
     assert!(!stdout.contains(&hash_custom));
 }
+
+#[test]
+fn test_cache_prune_keeps_resource_referenced_only_by_path() {
+    let (_g, cfg, cache) = setup_dirs();
+    let payload = b"path-only-resource";
+    let hash = write_cache_object(&cache, payload);
+    let cache_path = cache.join(&hash[..2]).join(&hash[2..]);
+
+    // Reference the cache object by path, with sha256 absent.
+    let cfg_json = serde_json::json!({
+        "qemu_bin": "qemu-system-x86_64",
+        "args": [],
+        "resources": {
+            "disk": {
+                "path": cache_path.to_str().unwrap(),
+                "kind": "image"
+            }
+        }
+    });
+    std::fs::write(cfg.join("vm.json"), cfg_json.to_string()).unwrap();
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_RESOURCE_CACHE_DIR", &cache)
+        .args(["cache", "prune"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "prune failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(
+        cache_path.exists(),
+        "object referenced only by path was pruned (regression)"
+    );
+}

@@ -61,11 +61,23 @@ pub fn fetch_to_file(url: &str, dest: &Path) -> VexResult<()> {
     Ok(())
 }
 
+/// Result of a successful [`fetch_to_cache`] call.
+///
+/// `path` is the absolute path of the cached object. `sha256` is the
+/// content's hex-encoded SHA-256 (the cache key). `size` is the byte size
+/// of the on-disk object.
+#[derive(Debug, Clone)]
+pub struct CachedResource {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub size: u64,
+}
+
 pub fn fetch_to_cache(
     url: &str,
     expected_sha256: Option<&str>,
     cache_dir: &Path,
-) -> VexResult<PathBuf> {
+) -> VexResult<CachedResource> {
     fs::create_dir_all(cache_dir).map_err(|e| VexError::IoError {
         path: cache_dir.to_path_buf(),
         operation: "create resource cache directory".into(),
@@ -124,7 +136,19 @@ pub fn fetch_to_cache(
         let _ = fs::remove_file(&tmp_path);
     }
 
-    Ok(final_path)
+    let size = fs::metadata(&final_path)
+        .map_err(|e| VexError::IoError {
+            path: final_path.clone(),
+            operation: "stat cached resource".into(),
+            source: e,
+        })?
+        .len();
+
+    Ok(CachedResource {
+        path: final_path,
+        sha256: actual,
+        size,
+    })
 }
 
 #[cfg(test)]
@@ -188,12 +212,14 @@ mod tests {
         let url = format!("http://127.0.0.1:{}/data", port);
         let cache = TempDir::new().unwrap();
 
-        let path = fetch_to_cache(&url, Some(&expected), cache.path()).unwrap();
-        let content = fs::read(&path).unwrap();
+        let cached = fetch_to_cache(&url, Some(&expected), cache.path()).unwrap();
+        let content = fs::read(&cached.path).unwrap();
         assert_eq!(content, payload);
         let prefix = &expected[..2];
         let rest = &expected[2..];
-        assert_eq!(path, cache.path().join(prefix).join(rest));
+        assert_eq!(cached.path, cache.path().join(prefix).join(rest));
+        assert_eq!(cached.sha256, expected);
+        assert_eq!(cached.size as usize, payload.len());
         stop.store(true, AtOrd::Relaxed);
     }
 

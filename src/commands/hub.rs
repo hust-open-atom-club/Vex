@@ -203,10 +203,12 @@ pub fn hub_install_command(args: HubInstallArgs) -> VexResult<()> {
             continue;
         }
         match fetch_to_cache(&url, r.sha256.as_deref(), &cache_dir) {
-            Ok(local_path) => {
-                if let Some(p) = local_path.to_str() {
+            Ok(cached) => {
+                if let Some(p) = cached.path.to_str() {
                     if let Some(entry) = published.config.resources.get_mut(&key) {
                         entry.path = p.to_string();
+                        entry.sha256 = Some(cached.sha256.clone());
+                        entry.size = Some(cached.size);
                     }
                     println!("  fetched resource '{}' into {}", key, p);
                 } else {
@@ -247,7 +249,7 @@ pub fn hub_list_command(args: HubListArgs) -> VexResult<()> {
         .collect();
 
     for e in &entries {
-        println!("{}/{}  [{:?}]  v{}", e.id, e.name, e.kind, e.latest_tag);
+        println!("{}/{}  [{:?}]  {}", e.id, e.name, e.kind, e.latest_tag);
         println!("  {}", e.summary);
     }
     println!("Total: {} entries", entries.len());

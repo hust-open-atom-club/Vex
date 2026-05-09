@@ -123,6 +123,8 @@ fn enumerate_cache_objects(root: &Path) -> VexResult<Vec<CacheObject>> {
 
 fn collect_referenced_hashes() -> VexResult<HashMap<String, Vec<String>>> {
     let dir = config_dir()?;
+    // Best-effort: if the cache root cannot be resolved, we still scan by sha256.
+    let cache_root = resource_cache_dir().ok();
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
     if !dir.exists() {
         return Ok(map);
@@ -154,10 +156,20 @@ fn collect_referenced_hashes() -> VexResult<HashMap<String, Vec<String>>> {
             Err(_) => continue,
         };
         for r in cfg.resources.values() {
+            // Primary path: explicit sha256.
             if let Some(sha) = &r.sha256 {
                 map.entry(sha.to_lowercase())
                     .or_default()
                     .push(name.clone());
+                continue;
+            }
+            // Fallback: recognize `path` pointing into the cache layout.
+            // This catches resources that were fetched via url-only entries
+            // before sha256 backfill landed, or that pre-date backfill.
+            if let Some(root) = &cache_root
+                && let Some(sha) = recover_hash_from_cache_path(&r.path, root)
+            {
+                map.entry(sha).or_default().push(name.clone());
             }
         }
     }
@@ -166,6 +178,41 @@ fn collect_referenced_hashes() -> VexResult<HashMap<String, Vec<String>>> {
         v.dedup();
     }
     Ok(map)
+}
+
+/// Try to recover a sha256 hex from a cache-path-like value.
+///
+/// Returns `Some(hex)` only if the path lives under `cache_root` and the
+/// last two components are the canonical `<2 hex>/<62 hex>` shard layout.
+/// Does **not** canonicalize or follow symlinks (avoids IO + attack surface);
+/// the file does not need to currently exist.
+fn recover_hash_from_cache_path(path: &str, cache_root: &Path) -> Option<String> {
+    let p = Path::new(path);
+    if !p.starts_with(cache_root) {
+        return None;
+    }
+    let mut rev = p.components().rev();
+    let last = rev.next()?;
+    let second_last = rev.next()?;
+    let last_str = match last {
+        std::path::Component::Normal(s) => s.to_str()?,
+        _ => return None,
+    };
+    let second_str = match second_last {
+        std::path::Component::Normal(s) => s.to_str()?,
+        _ => return None,
+    };
+    if second_str.len() != 2 || !second_str.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    if last_str.len() != 62 || !last_str.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!(
+        "{}{}",
+        second_str.to_lowercase(),
+        last_str.to_lowercase()
+    ))
 }
 
 fn resolve_hash_prefix<'a>(prefix: &str, objects: &'a [CacheObject]) -> VexResult<&'a CacheObject> {

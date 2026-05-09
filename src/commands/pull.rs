@@ -70,10 +70,16 @@ pub fn pull_command(
             continue;
         }
         match fetch_to_cache(&url, r.sha256.as_deref(), &cache_dir) {
-            Ok(local_path) => {
-                if let Some(p) = local_path.to_str() {
+            Ok(cached) => {
+                if let Some(p) = cached.path.to_str() {
                     if let Some(entry) = published.config.resources.get_mut(&key) {
                         entry.path = p.to_string();
+                        // Backfill sha256 + size so `vex cache prune` can
+                        // recognize this resource as referenced. Safe to
+                        // overwrite: when the user supplied an expected
+                        // sha256, fetch_to_cache only succeeds on match.
+                        entry.sha256 = Some(cached.sha256.clone());
+                        entry.size = Some(cached.size);
                     }
                     println!("  fetched resource '{}' into {}", key, p);
                 } else {
