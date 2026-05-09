@@ -411,3 +411,203 @@ fn test_hub_list_filters_by_kind() {
     assert!(stdout.contains("Total: 2 entries"));
     stop.store(true, Ordering::Relaxed);
 }
+
+fn index_with_one_entry(latest_tag: &str) -> Vec<u8> {
+    serde_json::json!({
+        "schema_version": 1,
+        "entries": [{
+            "id": "team",
+            "name": "demo",
+            "latest_tag": latest_tag,
+            "tags": [latest_tag],
+            "summary": "demo summary",
+            "kind": "demo",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }]
+    })
+    .to_string()
+    .into_bytes()
+}
+
+#[test]
+fn test_hub_info_resolves_omitted_tag_via_index_latest_tag() {
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/index.json" {
+            (200, index_with_one_entry("v2"))
+        } else if path == "/configs/team/demo/v2.json" {
+            (200, published_v2_json("qemu-system-resolved"))
+        } else if path == "/configs/team/demo/latest.json" {
+            // The client must NOT request this; we 404 it to fail loudly if it does.
+            (404, b"latest.json should never be requested".to_vec())
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+    let (_g, cfg) = temp_config_dir();
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args(["hub", "info", "team/demo"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "info failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("qemu-system-resolved"));
+    assert!(stdout.contains(":v2"));
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[test]
+fn test_hub_info_explicit_tag_does_not_query_index() {
+    // When a tag is explicit, the client should never need /index.json.
+    // We prove this by serving v3.json but 404-ing /index.json.
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/configs/team/demo/v3.json" {
+            (200, published_v2_json("qemu-system-explicit"))
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+    let (_g, cfg) = temp_config_dir();
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args(["hub", "info", "team/demo:v3"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "explicit-tag info failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("qemu-system-explicit"));
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[test]
+fn test_hub_install_resolves_omitted_tag_via_index() {
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/index.json" {
+            (200, index_with_one_entry("v2"))
+        } else if path == "/configs/team/demo/v2.json" {
+            (200, published_v2_json("qemu-system-installed"))
+        } else {
+            // Includes /configs/team/demo/latest.json — must not be queried.
+            (404, b"".to_vec())
+        }
+    });
+    let (_g, cfg) = temp_config_dir();
+    let cache = _g.path().join("cache");
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .env("VEX_RESOURCE_CACHE_DIR", &cache)
+        .args(["hub", "install", "team/demo", "--as", "my-demo"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(cfg.join("my-demo.json").exists());
+    assert!(!cfg.join("demo.json").exists());
+    assert!(!cfg.join("latest.json").exists());
+
+    let local = std::fs::read_to_string(cfg.join("my-demo.json")).unwrap();
+    assert!(local.contains("qemu-system-installed"));
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[test]
+fn test_hub_install_rejects_path_traversal_in_as() {
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/configs/team/demo/v1.json" {
+            (200, published_v2_json("qemu-system-x86_64"))
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+    let (g, cfg) = temp_config_dir();
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args(["hub", "install", "team/demo:v1", "--as", "../evil"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
+    assert!(
+        stderr.contains("separator") || stderr.contains("name") || stderr.contains("validation"),
+        "stderr did not flag a name validation issue: {}",
+        stderr
+    );
+
+    // The traversal target — a sibling of cfg — must not exist.
+    let parent = g.path();
+    assert!(!parent.join("evil.json").exists());
+    assert!(!cfg.join("../evil.json").exists());
+    stop.store(true, Ordering::Relaxed);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_hub_install_rejects_absolute_path_in_as() {
+    let (listener, base_url) = bind_listener();
+    let stop = serve(listener, |path| {
+        if path == "/configs/team/demo/v1.json" {
+            (200, published_v2_json("qemu-system-x86_64"))
+        } else {
+            (404, b"".to_vec())
+        }
+    });
+    let (_g, cfg) = temp_config_dir();
+
+    // Use a unique sentinel path under /tmp so we can prove nothing landed there.
+    let sentinel = format!(
+        "/tmp/vex-test-evil-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    // Pre-condition: target must not exist.
+    let target = format!("{}.json", sentinel);
+    let _ = std::fs::remove_file(&target);
+    assert!(!std::path::Path::new(&target).exists());
+
+    let out = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &cfg)
+        .env("VEX_HUB_URL", &base_url)
+        .args(["hub", "install", "team/demo:v1", "--as", &sentinel])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
+    assert!(
+        stderr.contains("separator") || stderr.contains("name") || stderr.contains("validation"),
+        "stderr did not flag a name validation issue: {}",
+        stderr
+    );
+
+    assert!(!std::path::Path::new(&target).exists());
+    stop.store(true, Ordering::Relaxed);
+}

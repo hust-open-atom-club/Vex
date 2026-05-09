@@ -2,11 +2,11 @@ use clap::{Args, Subcommand};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::{config_file, resource_cache_dir, validate_config};
+use crate::config::{config_file, resource_cache_dir, validate_config, validate_config_name};
 use crate::error::{VexError, VexResult};
 use crate::hub::fetch::{fetch_index, fetch_published_config};
 use crate::hub::types::HubEntryKind;
-use crate::hub::{hub_base_url, parse_hub_spec};
+use crate::hub::{hub_base_url, parse_hub_spec, resolve_tag};
 use crate::remote::fetch::fetch_to_cache;
 use crate::utils::io::prompt_user_default_no;
 
@@ -123,9 +123,9 @@ pub fn hub_search_command(args: HubSearchArgs) -> VexResult<()> {
 
 pub fn hub_info_command(args: HubInfoArgs) -> VexResult<()> {
     let (id, name, tag_opt) = parse_hub_spec(&args.spec)?;
-    let tag = tag_opt.as_deref().unwrap_or("latest");
     let base = hub_base_url();
-    let published = fetch_published_config(&base, &id, &name, tag)?;
+    let tag = resolve_tag(&base, &id, &name, tag_opt.as_deref())?;
+    let published = fetch_published_config(&base, &id, &name, &tag)?;
     let cfg = &published.config;
 
     println!("Hub entry: {}/{}:{}\n", id, name, tag);
@@ -159,12 +159,13 @@ pub fn hub_info_command(args: HubInfoArgs) -> VexResult<()> {
 
 pub fn hub_install_command(args: HubInstallArgs) -> VexResult<()> {
     let (id, name, tag_opt) = parse_hub_spec(&args.spec)?;
-    let tag = tag_opt.as_deref().unwrap_or("latest");
     let base = hub_base_url();
-    let mut published = fetch_published_config(&base, &id, &name, tag)?;
+    let tag = resolve_tag(&base, &id, &name, tag_opt.as_deref())?;
+    let mut published = fetch_published_config(&base, &id, &name, &tag)?;
     validate_config(&published.config)?;
 
     let local_name = args.local_name.unwrap_or_else(|| name.clone());
+    validate_config_name(&local_name)?;
     let config_path = config_file(&local_name)?;
     if config_path.exists() && !args.force {
         println!(

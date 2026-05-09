@@ -83,3 +83,33 @@ fn validate_hub_segment(label: &str, value: &str) -> VexResult<()> {
     }
     Ok(())
 }
+
+use crate::hub::fetch::fetch_index;
+
+/// Resolve the effective tag for a hub spec.
+///
+/// If `tag_opt` is `Some`, return it as-is (explicit user choice).
+/// If `tag_opt` is `None`, fetch the hub index and look up the entry's
+/// `latest_tag` — never assume a `latest.json` alias exists, since the
+/// hub protocol does not require it.
+pub fn resolve_tag(
+    base_url: &str,
+    id: &str,
+    name: &str,
+    tag_opt: Option<&str>,
+) -> VexResult<String> {
+    if let Some(tag) = tag_opt {
+        return Ok(tag.to_string());
+    }
+    let index = fetch_index(base_url)?;
+    index
+        .entries
+        .iter()
+        .find(|e| e.id == id && e.name == name)
+        .map(|e| e.latest_tag.clone())
+        .ok_or_else(|| VexError::HubEntryNotFound {
+            id: id.to_string(),
+            name: name.to_string(),
+            tag: "latest".to_string(),
+        })
+}

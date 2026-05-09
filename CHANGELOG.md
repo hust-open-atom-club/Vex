@@ -5,6 +5,16 @@ All notable changes to Vex are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-09
+
+### Fixed
+- `vex hub info` and `vex hub install` now resolve omitted tags via
+  `index.json`'s `latest_tag` field instead of assuming a `latest.json`
+  alias, matching the protocol contract in `docs/HUB_PROTOCOL.md`.
+- `vex hub install --as <NAME>` now validates the local name before
+  constructing the config path, preventing path traversal via values
+  like `../evil`.
+
 ## [0.3.0] - 2026-05-08
 
 ### Added
