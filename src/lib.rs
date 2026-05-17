@@ -30,6 +30,7 @@ pub mod config;
 pub mod error;
 pub mod hub;
 pub mod remote;
+pub mod tui;
 pub mod utils;
 
 #[cfg(test)]
@@ -44,7 +45,7 @@ use commands::{
     completions_command, edit_command, exec_command, hub_info_command, hub_install_command,
     hub_list_command, hub_search_command, list_command, print_command, pull_command, push_command,
     remove_command, rename_command, resource_add_command, resource_list_command,
-    resource_rm_command, save_command,
+    resource_rm_command, save_command, tui_command,
 };
 
 pub fn run() -> Result<()> {
@@ -94,6 +95,7 @@ pub fn run() -> Result<()> {
             HubCommands::Install(a) => hub_install_command(a),
             HubCommands::List(a) => hub_list_command(a),
         },
+        Commands::Tui(args) => tui_command(args.exit_after_init),
     };
     result.map_err(|e| anyhow::anyhow!(e))
 }

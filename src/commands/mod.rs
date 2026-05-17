@@ -11,6 +11,7 @@ pub mod remove;
 pub mod rename;
 pub mod resource;
 pub mod save;
+pub mod tui;
 
 pub use cache::{
     CacheArgs, CacheCommands, cache_info_command, cache_list_command, cache_prune_command,
@@ -18,7 +19,7 @@ pub use cache::{
 };
 pub use completions::{CompletionsArgs, completions_command};
 pub use edit::{EditArgs, edit_command};
-pub use exec::{ExecArgs, exec_command};
+pub use exec::{ExecArgs, PreparedCommand, exec_command, prepare_command};
 pub use hub::{
     HubArgs, HubCommands, hub_info_command, hub_install_command, hub_list_command,
     hub_search_command,
@@ -34,6 +35,7 @@ pub use resource::{
     resource_rm_command,
 };
 pub use save::{SaveArgs, save_command};
+pub use tui::{TuiArgs, tui_command};
 
 use clap::{Parser, Subcommand};
 
@@ -77,6 +79,9 @@ pub enum Commands {
 
     /// Browse and install entries from the Vex Hub
     Hub(HubArgs),
+
+    /// Launch the interactive TUI
+    Tui(TuiArgs),
 }
 
 #[derive(Parser)]

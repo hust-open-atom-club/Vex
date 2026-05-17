@@ -320,3 +320,106 @@ fn test_check_resource_files_errors_for_missing() {
         other => panic!("expected ResourceFileNotFound, got {:?}", other),
     }
 }
+
+mod prepare_command_tests {
+    use super::make_resource;
+    use crate::commands::exec::prepare_command;
+    use crate::config::{QemuConfig, ResourceKind};
+    use crate::error::VexError;
+    use std::collections::HashMap;
+
+    fn base_config(args: Vec<String>) -> QemuConfig {
+        QemuConfig {
+            qemu_bin: "/usr/bin/qemu-system-x86_64".to_string(),
+            args,
+            desc: None,
+            qemu_version: None,
+            resources: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn prepare_command_sets_correct_binary() {
+        let config = base_config(vec!["-m".to_string(), "1024".to_string()]);
+        let prepared = prepare_command(&config, false).unwrap();
+        assert_eq!(
+            prepared.command.get_program().to_str().unwrap(),
+            "/usr/bin/qemu-system-x86_64"
+        );
+    }
+
+    #[test]
+    fn prepare_command_substitutes_env_vars() {
+        let var_name = "VEX_TEST_PREPARE_ENV_VAR_XYZ";
+        // SAFETY: test sets and unsets a uniquely-named env var; no other
+        // test in this binary references this variable.
+        unsafe {
+            std::env::set_var(var_name, "/opt/disks/x.img");
+        }
+        let config = base_config(vec![format!("file=${{{}}}", var_name)]);
+        let prepared = prepare_command(&config, false).unwrap();
+        // SAFETY: cleanup of the same uniquely-named var set above.
+        unsafe {
+            std::env::remove_var(var_name);
+        }
+        assert_eq!(prepared.final_args, vec!["file=/opt/disks/x.img"]);
+    }
+
+    #[test]
+    fn prepare_command_substitutes_resources() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let tmp_path = tmp.path().to_str().unwrap().to_string();
+        let mut config = base_config(vec!["file=${res:k}".to_string()]);
+        config.resources.insert(
+            "k".to_string(),
+            make_resource(&tmp_path, ResourceKind::Image),
+        );
+        let prepared = prepare_command(&config, false).unwrap();
+        assert_eq!(prepared.final_args, vec![format!("file={}", tmp_path)]);
+    }
+
+    #[test]
+    fn prepare_command_unknown_resource_reference() {
+        let config = base_config(vec!["${res:nonexistent}".to_string()]);
+        let err = prepare_command(&config, false).unwrap_err();
+        match err {
+            VexError::UnknownResourceReference { key, .. } => {
+                assert_eq!(key, "nonexistent");
+            }
+            other => panic!("expected UnknownResourceReference, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prepare_command_missing_resource_file_errors() {
+        let missing = "/nonexistent/path/vex-prepare-test-abc-999";
+        let mut config = base_config(vec!["file=${res:k}".to_string()]);
+        config
+            .resources
+            .insert("k".to_string(), make_resource(missing, ResourceKind::Image));
+        let err = prepare_command(&config, false).unwrap_err();
+        match err {
+            VexError::ResourceFileNotFound { key, path } => {
+                assert_eq!(key, "k");
+                assert_eq!(path, std::path::PathBuf::from(missing));
+            }
+            other => panic!("expected ResourceFileNotFound, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prepare_command_appends_debug_flags() {
+        let config = base_config(vec!["-m".to_string(), "512".to_string()]);
+        let prepared = prepare_command(&config, true).unwrap();
+        let n = prepared.final_args.len();
+        assert!(n >= 2);
+        assert_eq!(&prepared.final_args[n - 2..], &["-s", "-S"]);
+    }
+
+    #[test]
+    fn prepare_command_no_debug_flags_when_false() {
+        let config = base_config(vec!["-m".to_string(), "512".to_string()]);
+        let prepared = prepare_command(&config, false).unwrap();
+        assert!(!prepared.final_args.iter().any(|a| a == "-s" || a == "-S"));
+    }
+}
