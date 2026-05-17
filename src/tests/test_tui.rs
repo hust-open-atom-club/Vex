@@ -1,7 +1,32 @@
-use crate::tui::app::{App, Focus, MessageKind};
+use crate::tui::app::{App, BrowseSubMode, Focus, MessageKind};
 use crate::tui::event::{AppEvent, translate_key};
 use crate::tui::scan::ConfigEntry;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+use std::sync::Mutex;
+
+/// Serializes tests that mutate VEX_CONFIG_DIR / set_var, which are
+/// process-global. Phase 3 integration tests run subcommands as child
+/// processes via escargot, so they don't conflict — this mutex covers
+/// the in-process refresh tests added in P4-5.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn setup_test_config_dir(configs: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("create tempdir");
+    // SAFETY: callers hold ENV_LOCK; only refresh tests touch VEX_CONFIG_DIR
+    // in-process, and they all serialize through that lock.
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    for (name, qemu_bin) in configs {
+        let path = dir.path().join(format!("{}.json", name));
+        let json = format!(
+            r#"{{"qemu_bin":"{}","args":[],"desc":null,"qemu_version":null}}"#,
+            qemu_bin
+        );
+        std::fs::write(&path, json).expect("write config");
+    }
+    dir
+}
 
 // --- App state (baseline) --------------------------------------------------
 
@@ -33,85 +58,95 @@ fn press(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
 
 #[test]
 fn translate_q_to_quit() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('q'), KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Char('q'), KeyModifiers::NONE), &app),
         AppEvent::Quit
     );
 }
 
 #[test]
 fn translate_esc_to_quit() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Esc, KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Esc, KeyModifiers::NONE), &app),
         AppEvent::Quit
     );
 }
 
 #[test]
 fn translate_ctrl_c_to_quit() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+        translate_key(press(KeyCode::Char('c'), KeyModifiers::CONTROL), &app),
         AppEvent::Quit
     );
 }
 
 #[test]
 fn translate_random_key_to_noop() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('a'), KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Char('a'), KeyModifiers::NONE), &app),
         AppEvent::Noop
     );
 }
 
 #[test]
 fn translate_j_to_navigate_down() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('j'), KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Char('j'), KeyModifiers::NONE), &app),
         AppEvent::NavigateDown
     );
 }
 
 #[test]
 fn translate_k_to_navigate_up() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('k'), KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Char('k'), KeyModifiers::NONE), &app),
         AppEvent::NavigateUp
     );
 }
 
 #[test]
 fn translate_g_to_navigate_top() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('g'), KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Char('g'), KeyModifiers::NONE), &app),
         AppEvent::NavigateTop
     );
 }
 
 #[test]
 fn translate_shift_g_to_navigate_bottom() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Char('G'), KeyModifiers::SHIFT)),
+        translate_key(press(KeyCode::Char('G'), KeyModifiers::SHIFT), &app),
         AppEvent::NavigateBottom
     );
 }
 
 #[test]
 fn translate_tab_to_toggle_focus() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Tab, KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Tab, KeyModifiers::NONE), &app),
         AppEvent::ToggleFocus
     );
 }
 
 #[test]
 fn translate_release_is_noop() {
+    let app = App::default();
     let key = KeyEvent::new_with_kind_and_state(
         KeyCode::Char('q'),
         KeyModifiers::NONE,
         KeyEventKind::Release,
         KeyEventState::NONE,
     );
-    assert_eq!(translate_key(key), AppEvent::Noop);
+    assert_eq!(translate_key(key, &app), AppEvent::Noop);
 }
 
 // --- L1 navigation state transitions --------------------------------------
@@ -348,8 +383,9 @@ fn noop_event_preserves_message() {
 
 #[test]
 fn enter_translates_to_launch() {
+    let app = App::default();
     assert_eq!(
-        translate_key(press(KeyCode::Enter, KeyModifiers::NONE)),
+        translate_key(press(KeyCode::Enter, KeyModifiers::NONE), &app),
         AppEvent::Launch
     );
 }
@@ -394,6 +430,395 @@ fn message_overrides_broken_count() {
         "broken count should be hidden in status bar: {}",
         status_row
     );
+}
+
+// --- L1 Filter sub-mode ---------------------------------------------------
+
+fn ok_entry_with_desc(name: &str, desc: Option<&str>) -> ConfigEntry {
+    use crate::config::QemuConfig;
+    ConfigEntry::Ok {
+        name: name.to_string(),
+        config: QemuConfig {
+            qemu_bin: "/bin/true".to_string(),
+            args: vec![],
+            desc: desc.map(|s| s.to_string()),
+            qemu_version: None,
+            resources: Default::default(),
+        },
+        path: std::path::PathBuf::from(format!("/tmp/{}.json", name)),
+    }
+}
+
+#[test]
+fn enter_filter_from_idle_starts_empty_query() {
+    let mut app = App::new(fixture_entries(2));
+    app.handle_event(AppEvent::EnterFilter);
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { query, accepted } => {
+            assert_eq!(query, "");
+            assert!(!accepted);
+        }
+        other => panic!("expected Filtering, got {:?}", other),
+    }
+}
+
+#[test]
+fn filter_char_appends_to_query() {
+    let mut app = App::new(fixture_entries(2));
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('c'));
+    app.handle_event(AppEvent::FilterChar('f'));
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { query, .. } => assert_eq!(query, "cf"),
+        _ => panic!("expected Filtering"),
+    }
+}
+
+#[test]
+fn filter_backspace_pops_query() {
+    let mut app = App::new(fixture_entries(2));
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('a'));
+    app.handle_event(AppEvent::FilterChar('b'));
+    app.handle_event(AppEvent::FilterBackspace);
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { query, .. } => assert_eq!(query, "a"),
+        _ => panic!("expected Filtering"),
+    }
+}
+
+#[test]
+fn accept_filter_marks_accepted_true() {
+    let mut app = App::new(fixture_entries(2));
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('c'));
+    app.handle_event(AppEvent::AcceptFilter);
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { accepted, query } => {
+            assert!(*accepted);
+            assert_eq!(query, "c");
+        }
+        _ => panic!("expected Filtering"),
+    }
+}
+
+#[test]
+fn exit_filter_returns_to_idle_and_resets_selected() {
+    let mut app = App::new(fixture_entries(3));
+    app.selected = 2;
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::ExitFilter);
+    assert!(matches!(app.browse_sub, BrowseSubMode::Idle));
+    assert_eq!(app.selected, 0);
+    assert_eq!(app.right_scroll, 0);
+}
+
+#[test]
+fn enter_filter_again_preserves_existing_query_when_accepted() {
+    let mut app = App::new(fixture_entries(2));
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('c'));
+    app.handle_event(AppEvent::FilterChar('f'));
+    app.handle_event(AppEvent::AcceptFilter);
+    app.handle_event(AppEvent::EnterFilter);
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { query, accepted } => {
+            assert_eq!(query, "cf");
+            assert!(!accepted);
+        }
+        _ => panic!("expected Filtering"),
+    }
+}
+
+#[test]
+fn visible_indices_filters_by_name() {
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("alphabet", None),
+    ];
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "alp".to_string(),
+        accepted: false,
+    };
+    let v = app.visible_indices();
+    assert_eq!(v, vec![0, 2]);
+}
+
+#[test]
+fn visible_indices_filters_by_description() {
+    let entries = vec![
+        ok_entry_with_desc("one", Some("linux server")),
+        ok_entry_with_desc("two", Some("windows")),
+        ok_entry_with_desc("three", None),
+    ];
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "linux".to_string(),
+        accepted: false,
+    };
+    let v = app.visible_indices();
+    assert_eq!(v, vec![0]);
+}
+
+#[test]
+fn visible_indices_case_insensitive() {
+    let entries = vec![
+        ok_entry_with_desc("AlphaBox", None),
+        ok_entry_with_desc("zeta", None),
+    ];
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "ALPHA".to_string(),
+        accepted: false,
+    };
+    let v = app.visible_indices();
+    assert_eq!(v, vec![0]);
+}
+
+#[test]
+fn visible_indices_empty_query_returns_all() {
+    let entries = fixture_entries(3);
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: String::new(),
+        accepted: false,
+    };
+    let v = app.visible_indices();
+    assert_eq!(v, vec![0, 1, 2]);
+}
+
+#[test]
+fn reselect_preserves_name_when_still_visible() {
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("alphabet", None),
+        ok_entry_with_desc("beta", None),
+    ];
+    let mut app = App::new(entries);
+    app.selected = 1; // "alphabet"
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('a'));
+    app.handle_event(AppEvent::FilterChar('l'));
+    // "alphabet" still matches; selected should follow it.
+    assert_eq!(app.entries[app.selected].name(), "alphabet");
+}
+
+#[test]
+fn reselect_falls_back_to_first_when_name_filtered_out() {
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("gamma", None),
+    ];
+    let mut app = App::new(entries);
+    app.selected = 2; // "gamma"
+    app.handle_event(AppEvent::EnterFilter);
+    app.handle_event(AppEvent::FilterChar('b'));
+    // "gamma" no longer visible; should fall back to first visible (beta).
+    assert_eq!(app.entries[app.selected].name(), "beta");
+}
+
+// --- L1 Help overlay ------------------------------------------------------
+
+#[test]
+fn toggle_help_flips_show_help() {
+    let mut app = App::new(fixture_entries(1));
+    assert!(!app.show_help);
+    app.handle_event(AppEvent::ToggleHelp);
+    assert!(app.show_help);
+    app.handle_event(AppEvent::ToggleHelp);
+    assert!(!app.show_help);
+}
+
+#[test]
+fn dismiss_help_clears_show_help() {
+    let mut app = App::new(fixture_entries(1));
+    app.show_help = true;
+    app.handle_event(AppEvent::DismissHelp);
+    assert!(!app.show_help);
+}
+
+// --- L1 Refresh -----------------------------------------------------------
+
+#[test]
+fn refresh_success_updates_entries_and_sets_info() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _dir = setup_test_config_dir(&[("vmA", "/bin/true"), ("vmB", "/bin/true")]);
+    let mut app = App::new(vec![]); // start empty
+    app.handle_event(AppEvent::Refresh);
+    assert_eq!(app.entries.len(), 2);
+    let msg = app.last_message.as_ref().expect("expected info message");
+    assert_eq!(msg.kind, MessageKind::Info);
+    assert!(msg.text.to_lowercase().contains("reloaded"));
+}
+
+#[test]
+fn refresh_preserves_selection_by_name() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _dir = setup_test_config_dir(&[
+        ("alpha", "/bin/true"),
+        ("beta", "/bin/true"),
+        ("gamma", "/bin/true"),
+    ]);
+    // Pre-populate with the same set so initial selection points at "beta".
+    let initial = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("gamma", None),
+    ];
+    let mut app = App::new(initial);
+    app.selected = 1; // beta
+    app.handle_event(AppEvent::Refresh);
+    assert_eq!(app.entries[app.selected].name(), "beta");
+}
+
+// --- L2 Filter + Help rendering -------------------------------------------
+
+#[test]
+fn render_filter_input_visible_when_filtering() {
+    let mut app = App::new(fixture_entries(2));
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "abc".to_string(),
+        accepted: false,
+    };
+    let buf = render_to_buffer(&app, 100, 20);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("/ abc"), "buffer: {}", s);
+}
+
+#[test]
+fn render_filtered_list_shows_only_matches() {
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("gamma", None),
+    ];
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "bet".to_string(),
+        accepted: false,
+    };
+    // Reselect so app.selected is on a visible row.
+    app.selected = 1;
+    let buf = render_to_buffer(&app, 100, 20);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("beta"), "buffer: {}", s);
+    // alpha/gamma should NOT appear as list rows. They can still appear in
+    // the title or hint, so check the list area rows (rows 3..18).
+    let mut list_text = String::new();
+    for r in 3..18 {
+        list_text.push_str(&buffer_row_to_string(&buf, r));
+        list_text.push('\n');
+    }
+    assert!(!list_text.contains("alpha"), "list rows: {}", list_text);
+    assert!(!list_text.contains("gamma"), "list rows: {}", list_text);
+}
+
+#[test]
+fn render_help_overlay_blocks_underlying_content() {
+    let mut app = App::new(fixture_entries(1));
+    app.show_help = true;
+    let buf = render_to_buffer(&app, 80, 24);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("Help"), "buffer: {}", s);
+    assert!(s.contains("Navigation"), "buffer: {}", s);
+    assert!(s.contains("launch selected QEMU"), "buffer: {}", s);
+}
+
+#[test]
+fn render_help_can_be_dismissed() {
+    let mut app = App::new(fixture_entries(1));
+    app.show_help = true;
+    app.handle_event(AppEvent::DismissHelp);
+    assert!(!app.show_help);
+    let buf = render_to_buffer(&app, 80, 24);
+    let s = buffer_to_string(&buf);
+    assert!(
+        !s.contains("Press any key to close this help"),
+        "buffer: {}",
+        s
+    );
+}
+
+#[test]
+fn render_filter_accepted_shows_in_title() {
+    let mut app = App::new(fixture_entries(2));
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "cfg".to_string(),
+        accepted: true,
+    };
+    let buf = render_to_buffer(&app, 100, 20);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("/cfg"), "buffer: {}", s);
+}
+
+// --- L3 headless state machine --------------------------------------------
+
+#[test]
+fn headless_quit_event_terminates_loop() {
+    use crate::tui::runner::run_state_machine;
+    let mut app = App::new(fixture_entries(2));
+    run_state_machine(
+        &mut app,
+        [
+            AppEvent::NavigateDown,
+            AppEvent::Quit,
+            AppEvent::NavigateDown,
+        ],
+    )
+    .unwrap();
+    assert!(app.should_quit);
+    // The second NavigateDown after Quit should NOT have been processed.
+    assert_eq!(app.selected, 1);
+}
+
+#[test]
+fn headless_multi_event_navigation_sequence() {
+    use crate::tui::runner::run_state_machine;
+    let mut app = App::new(fixture_entries(5));
+    run_state_machine(
+        &mut app,
+        [
+            AppEvent::NavigateDown,
+            AppEvent::NavigateDown,
+            AppEvent::NavigateDown,
+            AppEvent::NavigateUp,
+        ],
+    )
+    .unwrap();
+    assert_eq!(app.selected, 2);
+}
+
+#[test]
+fn headless_filter_workflow() {
+    use crate::tui::runner::run_state_machine;
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("alphabet", None),
+    ];
+    let mut app = App::new(entries);
+    run_state_machine(
+        &mut app,
+        [
+            AppEvent::EnterFilter,
+            AppEvent::FilterChar('a'),
+            AppEvent::FilterChar('l'),
+            AppEvent::AcceptFilter,
+        ],
+    )
+    .unwrap();
+    match &app.browse_sub {
+        BrowseSubMode::Filtering { query, accepted } => {
+            assert_eq!(query, "al");
+            assert!(*accepted);
+        }
+        _ => panic!("expected Filtering"),
+    }
+    let visible = app.visible_indices();
+    assert_eq!(visible.len(), 2);
 }
 
 // --- End-to-end smoke test (L3) -------------------------------------------

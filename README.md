@@ -18,6 +18,50 @@ firmware development, operating system development, and similar scenarios.
 | Resource binding | `save --image/--firmware/--resource`, `resource` | 3 |
 | Resource cache | `cache` | 3 |
 | Vex Hub (HTTP read-only) | `hub` | 3 |
+| Interactive TUI | `tui` | 4 |
+
+## Interactive TUI
+
+Vex includes an interactive terminal UI for browsing and launching saved
+configurations:
+
+    vex tui
+
+Browse mode shows your configurations in the left pane and the selected
+configuration's details on the right. Use j/k or arrow keys to navigate,
+press Enter to launch the selected configuration, and q or Esc to quit.
+
+### Key bindings (Browse mode)
+
+| Key       | Action                                |
+|-----------|---------------------------------------|
+| j / ↓     | Move selection down                   |
+| k / ↑     | Move selection up                     |
+| g         | Jump to first configuration           |
+| G         | Jump to last configuration            |
+| Tab       | Switch focus between list and details |
+| Enter     | Launch selected configuration in QEMU |
+| /         | Enter filter mode                     |
+| r         | Reload configurations from disk       |
+| ?         | Toggle help overlay                   |
+| q / Esc   | Quit TUI                              |
+| Ctrl+C    | Force quit                            |
+
+### Filter mode
+
+Press `/` to filter the list by name or description. Type to refine,
+Enter to accept (keep filter active), or Esc to clear.
+
+### Requirements
+
+- A terminal at least 100 columns wide is recommended.
+- The TUI uses the alternate screen and raw mode; it cleanly restores
+  the terminal on exit, error, or panic.
+
+### Screenshots
+
+(Screenshots will be added before the GitHub release: browse mode,
+filter mode, and help overlay.)
 
 ## Environment Variables
 

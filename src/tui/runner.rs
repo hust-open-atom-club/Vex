@@ -11,10 +11,12 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use super::app::{App, AppMessage, Focus, MessageKind};
+use super::app::{App, AppMessage, BrowseSubMode, Focus, MessageKind};
+#[cfg(test)]
+use super::event::AppEvent;
 use super::event::translate_key;
 use super::scan::{self, ConfigEntry};
 use super::theme;
@@ -73,7 +75,7 @@ fn main_loop(
         let mut needs_redraw = false;
         if event::poll(std::time::Duration::from_millis(250)).map_err(io_to_vex)? {
             if let Event::Key(key) = event::read().map_err(io_to_vex)? {
-                let ev = translate_key(key);
+                let ev = translate_key(key, app);
                 if app.handle_event(ev) {
                     needs_redraw = true;
                 }
@@ -145,6 +147,9 @@ fn launch_selected_config(
 pub(crate) fn draw(f: &mut Frame, app: &App) {
     if app.is_empty() {
         render_empty_screen(f);
+        if app.show_help {
+            render_help_overlay(f, app);
+        }
         return;
     }
 
@@ -169,6 +174,33 @@ pub(crate) fn draw(f: &mut Frame, app: &App) {
     render_right(f, cols[1], app);
 
     render_status_bar(f, chunks[2], app);
+
+    if app.show_help {
+        render_help_overlay(f, app);
+    }
+}
+
+/// Headless state-machine driver — feeds a sequence of events into the App
+/// without touching the terminal. Used by L3-style tests that exercise
+/// multi-event flows without requiring a TTY.
+///
+/// Note: pending_launch is observed but NOT executed — tests that need to
+/// verify launch behavior should check app.pending_launch directly after
+/// the call returns. Here we proactively drain it so a Launch event does
+/// not survive across iterations and confuse subsequent events.
+#[cfg(test)]
+pub(crate) fn run_state_machine(
+    app: &mut App,
+    events: impl IntoIterator<Item = AppEvent>,
+) -> VexResult<()> {
+    for ev in events {
+        app.handle_event(ev);
+        if app.should_quit {
+            return Ok(());
+        }
+        app.pending_launch = None;
+    }
+    Ok(())
 }
 
 fn render_empty_screen(f: &mut Frame) {
@@ -247,37 +279,86 @@ fn render_left(f: &mut Frame, area: Rect, app: &App) {
     } else {
         theme::dim_style()
     };
+    let title_text = match &app.browse_sub {
+        BrowseSubMode::Idle => "Configurations".to_string(),
+        BrowseSubMode::Filtering {
+            accepted: false, ..
+        } => "Configurations · filter".to_string(),
+        BrowseSubMode::Filtering {
+            accepted: true,
+            query,
+        } if !query.is_empty() => {
+            format!("Configurations · /{}", query)
+        }
+        BrowseSubMode::Filtering { accepted: true, .. } => "Configurations".to_string(),
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
-        .title(Span::styled("Configurations", title_style));
+        .title(Span::styled(title_text, title_style));
 
-    let items: Vec<ListItem> = app
-        .entries
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // If we're actively editing the filter, carve out a 2-row input area.
+    let (input_area, list_area) = if matches!(
+        &app.browse_sub,
+        BrowseSubMode::Filtering {
+            accepted: false,
+            ..
+        }
+    ) {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .split(inner);
+        (Some((rows[0], rows[1])), rows[2])
+    } else {
+        (None, inner)
+    };
+
+    if let Some((row0, row1)) = input_area
+        && let BrowseSubMode::Filtering { query, .. } = &app.browse_sub
+    {
+        let line = Line::from(vec![
+            Span::styled("/ ", theme::accent_style()),
+            Span::raw(query.clone()),
+            Span::styled("▏", theme::accent_style()),
+        ]);
+        f.render_widget(Paragraph::new(line), row0);
+        let sep: String = "─".repeat(row1.width as usize);
+        f.render_widget(Paragraph::new(sep).style(theme::dim_style()), row1);
+    }
+
+    let visible = app.visible_indices();
+    let items: Vec<ListItem> = visible
         .iter()
-        .map(|e| match e {
-            ConfigEntry::Ok { name, config, .. } => {
-                let desc_text = match &config.desc {
-                    Some(d) => truncate(d, 30),
-                    None => "(no description)".to_string(),
-                };
-                let desc_style = match &config.desc {
-                    Some(_) => theme::dim_style(),
-                    None => theme::dim_style(),
-                };
-                ListItem::new(Line::from(vec![
-                    Span::raw(name.clone()),
-                    Span::raw("  "),
-                    Span::styled(desc_text, desc_style),
-                ]))
-            }
-            ConfigEntry::Broken { name, .. } => {
-                let style = Style::default().fg(theme::BAD);
-                ListItem::new(Line::from(vec![
-                    Span::styled(name.clone(), style),
-                    Span::raw("  "),
-                    Span::styled("<broken>", style),
-                ]))
+        .map(|&i| {
+            let e = &app.entries[i];
+            match e {
+                ConfigEntry::Ok { name, config, .. } => {
+                    let desc_text = match &config.desc {
+                        Some(d) => truncate(d, 30),
+                        None => "(no description)".to_string(),
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::raw(name.clone()),
+                        Span::raw("  "),
+                        Span::styled(desc_text, theme::dim_style()),
+                    ]))
+                }
+                ConfigEntry::Broken { name, .. } => {
+                    let style = Style::default().fg(theme::BAD);
+                    ListItem::new(Line::from(vec![
+                        Span::styled(name.clone(), style),
+                        Span::raw("  "),
+                        Span::styled("<broken>", style),
+                    ]))
+                }
             }
         })
         .collect();
@@ -286,13 +367,15 @@ fn render_left(f: &mut Frame, area: Rect, app: &App) {
         .bg(ratatui::style::Color::Rgb(20, 60, 130))
         .add_modifier(Modifier::BOLD);
 
+    // The ListState selection is the position within the visible slice.
+    let selected_pos = visible.iter().position(|&i| i == app.selected);
+
     let list = List::new(items)
-        .block(block)
         .highlight_style(highlight)
         .highlight_symbol("▸ ");
 
-    let mut state = ListState::default().with_selected(Some(app.selected));
-    f.render_stateful_widget(list, area, &mut state);
+    let mut state = ListState::default().with_selected(selected_pos);
+    f.render_stateful_widget(list, list_area, &mut state);
 }
 
 fn render_right(f: &mut Frame, area: Rect, app: &App) {
@@ -458,12 +541,24 @@ fn render_status_bar(f: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
+    let hint_text = match &app.browse_sub {
+        BrowseSubMode::Idle => {
+            " q quit  Tab focus  j/k nav  g/G top/bot  / filter  ? help  r refresh"
+        }
+        BrowseSubMode::Filtering {
+            accepted: false, ..
+        } => " Enter accept  Esc cancel  Backspace edit  ↑↓ nav",
+        BrowseSubMode::Filtering { accepted: true, .. } => {
+            " q quit  / edit filter  Esc clear  ? help  r refresh"
+        }
+    };
+
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(20)])
         .split(area);
 
-    let hint = Paragraph::new(" q quit  Tab focus  j/k nav  g/G top/bot")
+    let hint = Paragraph::new(hint_text)
         .style(theme::dim_style())
         .alignment(Alignment::Left);
     f.render_widget(hint, cols[0]);
@@ -480,6 +575,56 @@ fn render_status_bar(f: &mut Frame, area: Rect, app: &App) {
             .alignment(Alignment::Right);
         f.render_widget(p, cols[1]);
     }
+}
+
+fn render_help_overlay(f: &mut Frame, _app: &App) {
+    let full = f.area();
+    let w = full.width.clamp(40, 64);
+    let h = full.height.clamp(12, 24);
+    let x = full.x + (full.width.saturating_sub(w)) / 2;
+    let y = full.y + (full.height.saturating_sub(h)) / 2;
+    let area = Rect::new(x, y, w, h);
+
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme::accent_style())
+        .title(Span::styled(" Help · Browse mode ", theme::accent_style()));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let accent = theme::accent_style();
+    let dim = theme::dim_style();
+    let lines: Vec<Line<'static>> = vec![
+        Line::from(""),
+        Line::from(Span::styled("  Navigation", accent)),
+        Line::from("    j  ↓     move down"),
+        Line::from("    k  ↑     move up"),
+        Line::from("    g        go to first"),
+        Line::from("    G        go to last"),
+        Line::from("    Tab      switch focus L / R"),
+        Line::from(""),
+        Line::from(Span::styled("  Actions", accent)),
+        Line::from("    Enter    launch selected QEMU"),
+        Line::from("    /        enter filter mode"),
+        Line::from("    r        reload configurations"),
+        Line::from("    ?        toggle this help"),
+        Line::from(""),
+        Line::from(Span::styled("  Filter mode", accent)),
+        Line::from("    Enter    accept filter"),
+        Line::from("    Esc      cancel filter"),
+        Line::from("    Backspace  edit query"),
+        Line::from(""),
+        Line::from(Span::styled("  Exit", accent)),
+        Line::from("    q  Esc   quit Vex TUI"),
+        Line::from("    Ctrl+C   force quit"),
+        Line::from(""),
+        Line::from(Span::styled("  Press any key to close this help.", dim)),
+    ];
+
+    let p = Paragraph::new(lines).wrap(Wrap { trim: false });
+    f.render_widget(p, inner);
 }
 
 fn truncate(s: &str, max: usize) -> String {
