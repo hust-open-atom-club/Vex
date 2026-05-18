@@ -432,6 +432,49 @@ fn message_overrides_broken_count() {
     );
 }
 
+// --- P4-5.1: Launch guards under filter ----------------------------------
+
+#[test]
+fn launch_with_empty_filter_result_sets_error_message() {
+    let mut app = App::new(fixture_entries(3));
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "xyzzzz".to_string(),
+        accepted: true,
+    };
+    app.handle_event(AppEvent::Launch);
+    assert!(app.pending_launch.is_none());
+    let msg = app.last_message.as_ref().expect("expected error message");
+    assert_eq!(msg.kind, MessageKind::Error);
+    assert!(
+        msg.text.contains("No configurations match"),
+        "unexpected text: {:?}",
+        msg.text
+    );
+}
+
+#[test]
+fn launch_with_filter_visible_still_works() {
+    let mut app = App::new(fixture_entries(3));
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "cfg".to_string(),
+        accepted: true,
+    };
+    // All three fixture entries are named cfg0/cfg1/cfg2, so they all match.
+    app.selected = 0;
+    app.handle_event(AppEvent::Launch);
+    assert_eq!(app.pending_launch, Some(0));
+    assert!(app.last_message.is_none());
+}
+
+#[test]
+fn launch_with_filter_idle_still_works() {
+    let mut app = App::new(fixture_entries(3));
+    app.selected = 1;
+    app.handle_event(AppEvent::Launch);
+    assert_eq!(app.pending_launch, Some(1));
+    assert!(app.last_message.is_none());
+}
+
 // --- L1 Filter sub-mode ---------------------------------------------------
 
 fn ok_entry_with_desc(name: &str, desc: Option<&str>) -> ConfigEntry {

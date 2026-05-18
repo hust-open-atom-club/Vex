@@ -181,6 +181,25 @@ impl App {
             }
             AppEvent::Launch => {
                 self.last_message = None;
+
+                // Guard: refuse to launch if the current selection isn't
+                // visible under the active filter. Protects users who accept
+                // a filter with zero matches, and defends against any future
+                // path that drifts selection out of view. Only runs in
+                // filter mode — the Idle empty-entries path stays a no-op
+                // to preserve P4-4 behaviour.
+                if matches!(self.browse_sub, BrowseSubMode::Filtering { .. }) {
+                    let visible = self.visible_indices();
+                    if !visible.contains(&self.selected) {
+                        if visible.is_empty() {
+                            self.set_error("No configurations match the current filter");
+                        } else {
+                            self.set_error("Selected configuration is not visible");
+                        }
+                        return true;
+                    }
+                }
+
                 match self.entries.get(self.selected) {
                     Some(ConfigEntry::Ok { .. }) => {
                         self.pending_launch = Some(self.selected);

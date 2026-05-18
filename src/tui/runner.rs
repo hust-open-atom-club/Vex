@@ -22,25 +22,58 @@ use super::scan::{self, ConfigEntry};
 use super::theme;
 use crate::error::{VexError, VexResult};
 
+/// Tracks partial terminal initialisation so we can clean up if an
+/// early `?` aborts setup before main_loop takes over.
+struct TerminalGuard {
+    raw_mode_enabled: bool,
+    alt_screen_entered: bool,
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        // Best-effort: ignore all errors so Drop never panics.
+        if self.alt_screen_entered {
+            let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        }
+        if self.raw_mode_enabled {
+            let _ = disable_raw_mode();
+        }
+    }
+}
+
 pub fn run(exit_after_init: bool) -> VexResult<()> {
     install_panic_hook();
 
     // Scan before raw mode so failures stay visible on the normal terminal.
     let entries = scan::scan_configs()?;
-    let app = App::new(entries);
+    let mut app = App::new(entries);
+
+    let mut guard = TerminalGuard {
+        raw_mode_enabled: false,
+        alt_screen_entered: false,
+    };
 
     enable_raw_mode().map_err(io_to_vex)?;
+    guard.raw_mode_enabled = true;
+
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).map_err(io_to_vex)?;
+    guard.alt_screen_entered = true;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).map_err(io_to_vex)?;
 
-    let mut app = app;
     let result = main_loop(&mut terminal, &mut app, exit_after_init);
 
+    // Successful path: keep the original P4-2 3-line best-effort cleanup
+    // (matches its sequencing exactly), then sync guard flags so the
+    // upcoming Drop is a no-op.
     let _ = disable_raw_mode();
     let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
     let _ = terminal.show_cursor();
+    guard.raw_mode_enabled = false;
+    guard.alt_screen_entered = false;
+    drop(guard);
 
     result
 }
@@ -651,5 +684,24 @@ fn io_to_vex(e: std::io::Error) -> VexError {
         path: std::path::PathBuf::from("<terminal>"),
         operation: "TUI terminal I/O".to_string(),
         source: e,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TerminalGuard;
+
+    #[test]
+    fn terminal_guard_drop_is_best_effort() {
+        // The guard's Drop must never panic, even when both flags are set
+        // and the cleanup syscalls fail (likely the case in a no-TTY test
+        // environment). We don't assert that the terminal was actually
+        // restored — that requires a real TTY — only that Drop returns
+        // normally.
+        let guard = TerminalGuard {
+            raw_mode_enabled: true,
+            alt_screen_entered: true,
+        };
+        drop(guard);
     }
 }
