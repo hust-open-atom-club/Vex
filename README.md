@@ -60,8 +60,17 @@ Enter to accept (keep filter active), or Esc to clear.
 
 ### Screenshots
 
-(Screenshots will be added before the GitHub release: browse mode,
-filter mode, and help overlay.)
+**Browse mode** — list and details side by side:
+
+![Browse mode](docs/screenshots/browse.png)
+
+**Filter mode** — live substring filter on name and description:
+
+![Filter mode](docs/screenshots/filter.png)
+
+**Help overlay** — in-TUI keybinding reference:
+
+![Help overlay](docs/screenshots/help.png)
 
 ## Environment Variables
 
