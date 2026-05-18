@@ -22,12 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terminal switch on missing files; status bar surfaces exit codes
   and launch errors after return.
 - Panic hook restores terminal state on unexpected crashes.
+- Polished UI: top status bar with configuration counts, card-style
+  detail view, rounded borders, and bracket-style key hints.
 - Internal: `prepare_command` extracted from `exec_command` for
   CLI/TUI reuse.
 
 ### Internal
 - New dependencies: ratatui 0.28, crossterm 0.28 (no async runtime).
-- Test count: 308 → 375 (TUI L1 state-machine + L2 render snapshots
+- Test count: 308 → 386 (TUI L1 state-machine + L2 render snapshots
   via TestBackend + L3 headless via `run_state_machine`).
 
 ## [0.3.2] - 2026-05-09

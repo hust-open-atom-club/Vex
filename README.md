@@ -60,17 +60,21 @@ Enter to accept (keep filter active), or Esc to clear.
 
 ### Screenshots
 
-**Browse mode** — list and details side by side:
+**Browse mode** — list with summary status bar, card-style details:
 
 ![Browse mode](docs/screenshots/browse.png)
 
-**Filter mode** — live substring filter on name and description:
+**Filter mode** — live substring filter with match count in top bar:
 
 ![Filter mode](docs/screenshots/filter.png)
 
 **Help overlay** — in-TUI keybinding reference:
 
 ![Help overlay](docs/screenshots/help.png)
+
+**Broken configuration** — visible error state with actionable hints:
+
+![Broken configuration](docs/screenshots/broken.png)
 
 ## Environment Variables
 

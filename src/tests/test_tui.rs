@@ -297,6 +297,10 @@ fn render_broken_entry_marked() {
 
 #[test]
 fn render_status_bar_broken_count() {
+    // In P4-5.2 the broken count moved from the bottom status bar into
+    // the top status bar. The assertion is updated to require the more
+    // specific "1 broken" string (stronger than the prior "broken"
+    // substring), still verifying that a broken entry surfaces visibly.
     let mut entries = fixture_entries(2);
     entries.push(ConfigEntry::Broken {
         name: "zbad".to_string(),
@@ -306,7 +310,7 @@ fn render_status_bar_broken_count() {
     let app = App::new(entries);
     let buf = render_to_buffer(&app, 100, 20);
     let s = buffer_to_string(&buf);
-    assert!(s.contains("broken"), "buffer: {}", s);
+    assert!(s.contains("1 broken"), "buffer: {}", s);
 }
 
 #[test]
@@ -413,12 +417,15 @@ fn render_info_message_in_status_bar() {
 
 #[test]
 fn message_overrides_broken_count() {
+    // In P4-5.2 the broken count is in the top bar and the bottom status
+    // bar shows bracketed key hints by default. A live last_message must
+    // still override the bottom row — verified here by checking that the
+    // message text appears and the default "[q]" bracket hint does NOT.
     let mut entries = fixture_entries(1);
     entries.push(broken_entry("zbad"));
     let mut app = App::new(entries);
     app.set_error("Override");
     let buf = render_to_buffer(&app, 100, 20);
-    // The status bar is the last row; the broken count must be hidden there.
     let status_row = buffer_row_to_string(&buf, 19);
     assert!(
         status_row.contains("Override"),
@@ -426,8 +433,8 @@ fn message_overrides_broken_count() {
         status_row
     );
     assert!(
-        !status_row.contains("broken"),
-        "broken count should be hidden in status bar: {}",
+        !status_row.contains("[q]"),
+        "default bracket hint should be hidden when a message is active: {}",
         status_row
     );
 }
@@ -795,6 +802,95 @@ fn render_filter_accepted_shows_in_title() {
     let buf = render_to_buffer(&app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("/cfg"), "buffer: {}", s);
+}
+
+// --- P4-5.2: top-bar / cards / bracket-style status bar -------------------
+
+#[test]
+fn render_top_bar_shows_counts() {
+    let mut entries = fixture_entries(3);
+    entries.push(broken_entry("zbad"));
+    let app = App::new(entries);
+    let buf = render_to_buffer(&app, 100, 24);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("4 configurations"), "buffer: {}", s);
+    assert!(s.contains("3 ok"), "buffer: {}", s);
+    assert!(s.contains("⚠ 1 broken"), "buffer: {}", s);
+}
+
+#[test]
+fn render_top_bar_filter_matched_count() {
+    let entries = vec![
+        ok_entry_with_desc("alpha", None),
+        ok_entry_with_desc("beta", None),
+        ok_entry_with_desc("gamma", None),
+        ok_entry_with_desc("delta", None),
+        ok_entry_with_desc("epsilon", None),
+    ];
+    let mut app = App::new(entries);
+    // "alpha" matches only the "alpha" entry → 1/5 matched.
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "alpha".to_string(),
+        accepted: false,
+    };
+    let buf = render_to_buffer(&app, 120, 24);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("1/5"), "buffer: {}", s);
+    assert!(s.contains("matched"), "buffer: {}", s);
+}
+
+#[test]
+fn render_right_pane_has_three_cards_for_ok() {
+    let app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&app, 120, 30);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("Binary"), "buffer: {}", s);
+    assert!(s.contains("Args"), "buffer: {}", s);
+    assert!(s.contains("Resources"), "buffer: {}", s);
+}
+
+#[test]
+fn render_right_pane_broken_has_error_and_hint() {
+    let app = App::new(vec![broken_entry("bad")]);
+    let buf = render_to_buffer(&app, 120, 30);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("Error"), "buffer: {}", s);
+    assert!(s.contains("Hint"), "buffer: {}", s);
+    // Default broken_entry uses "parse error" → hint mentions JSON.
+    assert!(s.contains("JSON"), "buffer: {}", s);
+}
+
+#[test]
+fn render_status_bar_uses_bracket_style() {
+    let app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&app, 120, 24);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("[q]"), "buffer: {}", s);
+    assert!(s.contains("[Tab]"), "buffer: {}", s);
+    assert!(s.contains("[Enter]"), "buffer: {}", s);
+}
+
+#[test]
+fn render_status_bar_no_broken_count() {
+    let mut entries = fixture_entries(1);
+    entries.push(broken_entry("zbad"));
+    let app = App::new(entries);
+    let buf = render_to_buffer(&app, 120, 24);
+    // Status bar is the last row.
+    let status_row = buffer_row_to_string(&buf, 23);
+    assert!(
+        !status_row.contains("broken"),
+        "broken count should live in top bar, not status bar: {}",
+        status_row
+    );
+}
+
+#[test]
+fn render_empty_state_still_has_top_bar() {
+    let app = App::new(vec![]);
+    let buf = render_to_buffer(&app, 80, 20);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("0 configurations"), "buffer: {}", s);
 }
 
 // --- L3 headless state machine --------------------------------------------
