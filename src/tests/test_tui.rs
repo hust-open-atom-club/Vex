@@ -860,6 +860,70 @@ fn render_right_pane_broken_has_error_and_hint() {
     assert!(s.contains("JSON"), "buffer: {}", s);
 }
 
+// --- P4-5.3: right-pane card scroll ---------------------------------------
+
+/// Build an Ok entry with `n` args so its Args card overflows a small viewport.
+fn ok_entry_with_many_args(name: &str, n: usize) -> ConfigEntry {
+    use crate::config::QemuConfig;
+    let args = (0..n).map(|i| format!("--arg{}", i)).collect();
+    ConfigEntry::Ok {
+        name: name.to_string(),
+        config: QemuConfig {
+            qemu_bin: "/bin/true".to_string(),
+            args,
+            desc: None,
+            qemu_version: None,
+            resources: Default::default(),
+        },
+        path: std::path::PathBuf::from(format!("/tmp/{}.json", name)),
+    }
+}
+
+#[test]
+fn render_right_pane_scroll_zero_shows_first_card() {
+    let app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    // scroll defaults to 0 in App::new.
+    let buf = render_to_buffer(&app, 120, 15);
+    let s = buffer_to_string(&buf);
+    assert!(
+        s.contains("Binary"),
+        "Binary card should be visible at scroll=0: {}",
+        s
+    );
+}
+
+#[test]
+fn render_right_pane_scroll_changes_visible_content() {
+    let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    // Strategy A is line-precise: Binary card occupies virtual rows 0..3.
+    // A scroll of 4 puts it entirely above the viewport, so the card must
+    // disappear from the buffer.
+    app.right_scroll = 4;
+    let buf = render_to_buffer(&app, 120, 15);
+    let s = buffer_to_string(&buf);
+    assert!(
+        !s.contains("Binary"),
+        "Binary card should be scrolled off-screen at scroll=4: {}",
+        s
+    );
+}
+
+#[test]
+fn render_right_pane_scroll_clamped_does_not_panic() {
+    let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    app.right_scroll = u16::MAX;
+    let buf = render_to_buffer(&app, 120, 15);
+    let s = buffer_to_string(&buf);
+    // u16::MAX is clamped to the content-aware max internally. At least one
+    // card must remain visible — Resources is the last card, so at max
+    // scroll it lands inside the viewport.
+    assert!(
+        s.contains("Resources"),
+        "at max scroll the last card should still render: {}",
+        s
+    );
+}
+
 #[test]
 fn render_status_bar_uses_bracket_style() {
     let app = App::new(fixture_entries(1));

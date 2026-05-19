@@ -30,7 +30,7 @@ pub(super) fn render(f: &mut Frame, area: Rect, app: &App) {
         .split(area);
 
     render_title(f, rows[1], entry);
-    render_cards_area(f, rows[3], entry);
+    render_cards_area(f, rows[3], entry, app.right_scroll);
     render_footer(f, rows[4], entry);
 }
 
@@ -71,39 +71,99 @@ fn render_footer(f: &mut Frame, area: Rect, entry: &ConfigEntry) {
     f.render_widget(Paragraph::new(line).alignment(Alignment::Left), area);
 }
 
-fn render_cards_area(f: &mut Frame, area: Rect, entry: &ConfigEntry) {
-    match entry {
-        ConfigEntry::Ok { config, .. } => render_ok_cards(f, area, config),
-        ConfigEntry::Broken { error, .. } => render_broken_cards(f, area, error),
+/// Logical "card" — knows its own height and how to render itself inside
+/// a given `Rect`. Used for scroll-aware placement in [`render_cards_area`].
+enum Card<'a> {
+    Binary(&'a QemuConfig),
+    Args(&'a QemuConfig),
+    Resources(&'a QemuConfig),
+    Error(&'a str),
+    Hint(&'a str),
+}
+
+impl<'a> Card<'a> {
+    fn height(&self) -> u16 {
+        match self {
+            Card::Binary(_) => 3,
+            Card::Args(c) => 2 + c.args.len().max(1) as u16,
+            Card::Resources(c) => {
+                if c.resources.is_empty() {
+                    3
+                } else {
+                    2 + (c.resources.len() as u16) * 2
+                }
+            }
+            Card::Error(_) => 3,
+            Card::Hint(_) => 4,
+        }
+    }
+
+    fn render(&self, f: &mut Frame, area: Rect) {
+        match self {
+            Card::Binary(c) => render_binary_card(f, area, c),
+            Card::Args(c) => render_args_card(f, area, c),
+            Card::Resources(c) => render_resources_card(f, area, c),
+            Card::Error(e) => render_error_card(f, area, e),
+            Card::Hint(e) => render_hint_card(f, area, e),
+        }
     }
 }
 
-fn render_ok_cards(f: &mut Frame, area: Rect, config: &QemuConfig) {
-    let binary_h: u16 = 3;
-    let args_h: u16 = 2 + config.args.len().max(1) as u16;
-    let resources_h: u16 = if config.resources.is_empty() {
-        3
-    } else {
-        // 2 lines per resource (key→path + metadata), + 2 for borders.
-        2 + (config.resources.len() as u16) * 2
-    };
+fn build_cards(entry: &ConfigEntry) -> Vec<Card<'_>> {
+    match entry {
+        ConfigEntry::Ok { config, .. } => vec![
+            Card::Binary(config),
+            Card::Args(config),
+            Card::Resources(config),
+        ],
+        ConfigEntry::Broken { error, .. } => vec![Card::Error(error), Card::Hint(error)],
+    }
+}
 
-    let constraints = vec![
-        Constraint::Length(binary_h),
-        Constraint::Length(1),
-        Constraint::Length(args_h),
-        Constraint::Length(1),
-        Constraint::Length(resources_h),
-        Constraint::Min(0),
-    ];
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(area);
+/// Place cards into `area` honouring `scroll`. Strategy A: line-precise
+/// clamp on `scroll`, but a card whose top edge would be clipped is
+/// skipped entirely (no headless cards). The runtime clamps `scroll` to
+/// the content-aware maximum locally; the value in `app.right_scroll` is
+/// never written back.
+fn render_cards_area(f: &mut Frame, area: Rect, entry: &ConfigEntry, scroll: u16) {
+    let cards = build_cards(entry);
+    if cards.is_empty() {
+        return;
+    }
+    let gap: u16 = 1;
+    let heights_sum: u16 = cards.iter().map(|c| c.height()).sum();
+    let total_lines: u16 = heights_sum + gap * (cards.len() as u16 - 1);
+    let max_scroll = total_lines.saturating_sub(area.height);
+    let effective = scroll.min(max_scroll);
 
-    render_binary_card(f, chunks[0], config);
-    render_args_card(f, chunks[2], config);
-    render_resources_card(f, chunks[4], config);
+    let mut virtual_y: u16 = 0;
+    for c in &cards {
+        let card_top = virtual_y;
+        let card_h = c.height();
+        let card_bottom = virtual_y + card_h;
+        virtual_y = card_bottom + gap;
+
+        // Entirely above the viewport — skip.
+        if card_bottom <= effective {
+            continue;
+        }
+        // Top edge would be clipped → skip the whole card (Strategy A).
+        if card_top < effective {
+            continue;
+        }
+        let screen_y = card_top - effective;
+        if screen_y >= area.height {
+            break;
+        }
+        let h = card_h.min(area.height - screen_y);
+        let rect = Rect {
+            x: area.x,
+            y: area.y + screen_y,
+            width: area.width,
+            height: h,
+        };
+        c.render(f, rect);
+    }
 }
 
 fn card_block(title: &str) -> Block<'_> {
@@ -211,38 +271,28 @@ fn render_resources_card(f: &mut Frame, area: Rect, config: &QemuConfig) {
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-fn render_broken_cards(f: &mut Frame, area: Rect, error: &str) {
-    let error_h: u16 = 3;
-    let hint_h: u16 = 4;
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(error_h),
-            Constraint::Length(1),
-            Constraint::Length(hint_h),
-            Constraint::Min(0),
-        ])
-        .split(area);
-
-    let err_block = card_block(" Error ");
-    let err_inner = err_block.inner(chunks[0]);
-    f.render_widget(err_block, chunks[0]);
-    let err_line = Line::from(vec![
+fn render_error_card(f: &mut Frame, area: Rect, error: &str) {
+    let block = card_block(" Error ");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let line = Line::from(vec![
         Span::raw("  "),
         Span::styled(error.to_string(), Style::default().fg(theme::BAD)),
     ]);
-    f.render_widget(Paragraph::new(err_line), err_inner);
+    f.render_widget(Paragraph::new(line), inner);
+}
 
-    let hint_block = card_block(" Hint ");
-    let hint_inner = hint_block.inner(chunks[2]);
-    f.render_widget(hint_block, chunks[2]);
+fn render_hint_card(f: &mut Frame, area: Rect, error: &str) {
+    let block = card_block(" Hint ");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
     let hint_text = hint_for_broken_error(error);
-    let hint_para = Paragraph::new(vec![Line::from(vec![
+    let para = Paragraph::new(vec![Line::from(vec![
         Span::raw("  "),
         Span::raw(hint_text),
     ])])
     .wrap(Wrap { trim: false });
-    f.render_widget(hint_para, hint_inner);
+    f.render_widget(para, inner);
 }
 
 fn hint_for_broken_error(error: &str) -> &'static str {
