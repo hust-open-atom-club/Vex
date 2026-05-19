@@ -11,10 +11,14 @@ use crate::tui::app::App;
 use crate::tui::scan::ConfigEntry;
 use crate::tui::theme;
 
-pub(super) fn render(f: &mut Frame, area: Rect, app: &App) {
-    let Some(entry) = app.current() else {
+pub(super) fn render(f: &mut Frame, area: Rect, app: &mut App) {
+    // Snapshot the entry by index so we can re-borrow app mutably later
+    // to clamp app.right_scroll. We avoid holding a shared borrow of
+    // app.entries[..] across the &mut write.
+    let selected = app.selected;
+    if app.entries.get(selected).is_none() {
         return;
-    };
+    }
 
     // Vertical layout: top pad / title / spacer / cards (Min) / footer / bottom pad.
     let rows = Layout::default()
@@ -29,9 +33,34 @@ pub(super) fn render(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    render_title(f, rows[1], entry);
-    render_cards_area(f, rows[3], entry, app.right_scroll);
-    render_footer(f, rows[4], entry);
+    {
+        let entry = &app.entries[selected];
+        render_title(f, rows[1], entry);
+        render_footer(f, rows[4], entry);
+    }
+
+    // Cards area: compute content total, clamp app.right_scroll, then render.
+    let cards_area = rows[3];
+    let entry = &app.entries[selected];
+    let cards = build_cards(entry);
+    let total_lines: u16 = if cards.is_empty() {
+        0
+    } else {
+        let heights: u16 = cards.iter().map(|c| c.height()).sum();
+        heights + (cards.len() as u16 - 1)
+    };
+    let max_scroll = total_lines.saturating_sub(cards_area.height);
+
+    // P4-5.4: clamp-and-write-back. Ensure app.right_scroll never carries
+    // a value greater than what's actually reachable for the currently
+    // selected entry. Sentinels like u16::MAX (set by NavigateBottom) are
+    // pulled down here so subsequent NavigateUp ticks respond immediately.
+    if app.right_scroll > max_scroll {
+        app.right_scroll = max_scroll;
+    }
+    let effective_scroll = app.right_scroll;
+
+    place_cards(f, cards_area, &cards, effective_scroll);
 }
 
 fn render_title(f: &mut Frame, area: Rect, entry: &ConfigEntry) {
@@ -120,38 +149,33 @@ fn build_cards(entry: &ConfigEntry) -> Vec<Card<'_>> {
     }
 }
 
-/// Place cards into `area` honouring `scroll`. Strategy A: line-precise
-/// clamp on `scroll`, but a card whose top edge would be clipped is
-/// skipped entirely (no headless cards). The runtime clamps `scroll` to
-/// the content-aware maximum locally; the value in `app.right_scroll` is
-/// never written back.
-fn render_cards_area(f: &mut Frame, area: Rect, entry: &ConfigEntry, scroll: u16) {
-    let cards = build_cards(entry);
+/// Place cards into `area` honouring `effective_scroll`. Strategy A:
+/// line-precise scroll, but a card whose top edge would be clipped is
+/// skipped entirely (no headless cards). The caller is responsible for
+/// clamping `effective_scroll` to a content-aware maximum BEFORE calling
+/// this function (P4-5.4 moved clamping to the caller so it can also
+/// write the clamped value back to `App`).
+fn place_cards(f: &mut Frame, area: Rect, cards: &[Card<'_>], effective_scroll: u16) {
     if cards.is_empty() {
         return;
     }
     let gap: u16 = 1;
-    let heights_sum: u16 = cards.iter().map(|c| c.height()).sum();
-    let total_lines: u16 = heights_sum + gap * (cards.len() as u16 - 1);
-    let max_scroll = total_lines.saturating_sub(area.height);
-    let effective = scroll.min(max_scroll);
-
     let mut virtual_y: u16 = 0;
-    for c in &cards {
+    for c in cards {
         let card_top = virtual_y;
         let card_h = c.height();
         let card_bottom = virtual_y + card_h;
         virtual_y = card_bottom + gap;
 
         // Entirely above the viewport — skip.
-        if card_bottom <= effective {
+        if card_bottom <= effective_scroll {
             continue;
         }
         // Top edge would be clipped → skip the whole card (Strategy A).
-        if card_top < effective {
+        if card_top < effective_scroll {
             continue;
         }
-        let screen_y = card_top - effective;
+        let screen_y = card_top - effective_scroll;
         if screen_y >= area.height {
             break;
         }

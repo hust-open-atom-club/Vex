@@ -241,7 +241,7 @@ fn app_right_focus_scrolls_right_panel() {
 
 // --- L2 render snapshot (TestBackend) --------------------------------------
 
-fn render_to_buffer(app: &App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     let backend = TestBackend::new(width, height);
@@ -267,16 +267,16 @@ fn buffer_row_to_string(buf: &ratatui::buffer::Buffer, row: u16) -> String {
 
 #[test]
 fn render_empty_state() {
-    let app = App::new(vec![]);
-    let buf = render_to_buffer(&app, 60, 12);
+    let mut app = App::new(vec![]);
+    let buf = render_to_buffer(&mut app, 60, 12);
     let s = buffer_to_string(&buf);
     assert!(s.contains("No configurations"), "buffer: {}", s);
 }
 
 #[test]
 fn render_ok_entry_shows_name_in_list() {
-    let app = App::new(fixture_entries(1));
-    let buf = render_to_buffer(&app, 80, 20);
+    let mut app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&mut app, 80, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("cfg0"), "buffer: {}", s);
 }
@@ -288,8 +288,8 @@ fn render_broken_entry_marked() {
         path: std::path::PathBuf::from("/tmp/bad.json"),
         error: "parse error".to_string(),
     }];
-    let app = App::new(entries);
-    let buf = render_to_buffer(&app, 80, 20);
+    let mut app = App::new(entries);
+    let buf = render_to_buffer(&mut app, 80, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("<broken>"), "buffer: {}", s);
     assert!(s.contains("bad"), "buffer: {}", s);
@@ -307,16 +307,16 @@ fn render_status_bar_broken_count() {
         path: std::path::PathBuf::from("/tmp/zbad.json"),
         error: "parse error".to_string(),
     });
-    let app = App::new(entries);
-    let buf = render_to_buffer(&app, 100, 20);
+    let mut app = App::new(entries);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("1 broken"), "buffer: {}", s);
 }
 
 #[test]
 fn render_focus_indicator_on_left_default() {
-    let app = App::new(fixture_entries(1));
-    let buf = render_to_buffer(&app, 80, 20);
+    let mut app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&mut app, 80, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Configurations"), "buffer: {}", s);
 }
@@ -400,7 +400,7 @@ fn enter_translates_to_launch() {
 fn render_error_message_in_status_bar() {
     let mut app = App::new(fixture_entries(1));
     app.set_error("Test error");
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Test error"), "buffer: {}", s);
     assert!(s.contains("press any key to dismiss"), "buffer: {}", s);
@@ -410,7 +410,7 @@ fn render_error_message_in_status_bar() {
 fn render_info_message_in_status_bar() {
     let mut app = App::new(fixture_entries(1));
     app.set_info("Test info");
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Test info"), "buffer: {}", s);
 }
@@ -425,7 +425,7 @@ fn message_overrides_broken_count() {
     entries.push(broken_entry("zbad"));
     let mut app = App::new(entries);
     app.set_error("Override");
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let status_row = buffer_row_to_string(&buf, 19);
     assert!(
         status_row.contains("Override"),
@@ -733,7 +733,7 @@ fn render_filter_input_visible_when_filtering() {
         query: "abc".to_string(),
         accepted: false,
     };
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("/ abc"), "buffer: {}", s);
 }
@@ -752,7 +752,7 @@ fn render_filtered_list_shows_only_matches() {
     };
     // Reselect so app.selected is on a visible row.
     app.selected = 1;
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("beta"), "buffer: {}", s);
     // alpha/gamma should NOT appear as list rows. They can still appear in
@@ -770,7 +770,7 @@ fn render_filtered_list_shows_only_matches() {
 fn render_help_overlay_blocks_underlying_content() {
     let mut app = App::new(fixture_entries(1));
     app.show_help = true;
-    let buf = render_to_buffer(&app, 80, 24);
+    let buf = render_to_buffer(&mut app, 80, 24);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Help"), "buffer: {}", s);
     assert!(s.contains("Navigation"), "buffer: {}", s);
@@ -783,7 +783,7 @@ fn render_help_can_be_dismissed() {
     app.show_help = true;
     app.handle_event(AppEvent::DismissHelp);
     assert!(!app.show_help);
-    let buf = render_to_buffer(&app, 80, 24);
+    let buf = render_to_buffer(&mut app, 80, 24);
     let s = buffer_to_string(&buf);
     assert!(
         !s.contains("Press any key to close this help"),
@@ -799,7 +799,7 @@ fn render_filter_accepted_shows_in_title() {
         query: "cfg".to_string(),
         accepted: true,
     };
-    let buf = render_to_buffer(&app, 100, 20);
+    let buf = render_to_buffer(&mut app, 100, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("/cfg"), "buffer: {}", s);
 }
@@ -810,8 +810,8 @@ fn render_filter_accepted_shows_in_title() {
 fn render_top_bar_shows_counts() {
     let mut entries = fixture_entries(3);
     entries.push(broken_entry("zbad"));
-    let app = App::new(entries);
-    let buf = render_to_buffer(&app, 100, 24);
+    let mut app = App::new(entries);
+    let buf = render_to_buffer(&mut app, 100, 24);
     let s = buffer_to_string(&buf);
     assert!(s.contains("4 configurations"), "buffer: {}", s);
     assert!(s.contains("3 ok"), "buffer: {}", s);
@@ -833,7 +833,7 @@ fn render_top_bar_filter_matched_count() {
         query: "alpha".to_string(),
         accepted: false,
     };
-    let buf = render_to_buffer(&app, 120, 24);
+    let buf = render_to_buffer(&mut app, 120, 24);
     let s = buffer_to_string(&buf);
     assert!(s.contains("1/5"), "buffer: {}", s);
     assert!(s.contains("matched"), "buffer: {}", s);
@@ -841,8 +841,8 @@ fn render_top_bar_filter_matched_count() {
 
 #[test]
 fn render_right_pane_has_three_cards_for_ok() {
-    let app = App::new(fixture_entries(1));
-    let buf = render_to_buffer(&app, 120, 30);
+    let mut app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&mut app, 120, 30);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Binary"), "buffer: {}", s);
     assert!(s.contains("Args"), "buffer: {}", s);
@@ -851,8 +851,8 @@ fn render_right_pane_has_three_cards_for_ok() {
 
 #[test]
 fn render_right_pane_broken_has_error_and_hint() {
-    let app = App::new(vec![broken_entry("bad")]);
-    let buf = render_to_buffer(&app, 120, 30);
+    let mut app = App::new(vec![broken_entry("bad")]);
+    let buf = render_to_buffer(&mut app, 120, 30);
     let s = buffer_to_string(&buf);
     assert!(s.contains("Error"), "buffer: {}", s);
     assert!(s.contains("Hint"), "buffer: {}", s);
@@ -881,9 +881,9 @@ fn ok_entry_with_many_args(name: &str, n: usize) -> ConfigEntry {
 
 #[test]
 fn render_right_pane_scroll_zero_shows_first_card() {
-    let app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
     // scroll defaults to 0 in App::new.
-    let buf = render_to_buffer(&app, 120, 15);
+    let buf = render_to_buffer(&mut app, 120, 15);
     let s = buffer_to_string(&buf);
     assert!(
         s.contains("Binary"),
@@ -899,7 +899,7 @@ fn render_right_pane_scroll_changes_visible_content() {
     // A scroll of 4 puts it entirely above the viewport, so the card must
     // disappear from the buffer.
     app.right_scroll = 4;
-    let buf = render_to_buffer(&app, 120, 15);
+    let buf = render_to_buffer(&mut app, 120, 15);
     let s = buffer_to_string(&buf);
     assert!(
         !s.contains("Binary"),
@@ -912,7 +912,7 @@ fn render_right_pane_scroll_changes_visible_content() {
 fn render_right_pane_scroll_clamped_does_not_panic() {
     let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
     app.right_scroll = u16::MAX;
-    let buf = render_to_buffer(&app, 120, 15);
+    let buf = render_to_buffer(&mut app, 120, 15);
     let s = buffer_to_string(&buf);
     // u16::MAX is clamped to the content-aware max internally. At least one
     // card must remain visible — Resources is the last card, so at max
@@ -924,10 +924,57 @@ fn render_right_pane_scroll_clamped_does_not_panic() {
     );
 }
 
+// --- P4-5.4: Ctrl+C priority + right_scroll clamp write-back --------------
+
+#[test]
+fn translate_ctrl_c_with_help_shown_still_quits() {
+    let app = App {
+        show_help: true,
+        ..Default::default()
+    };
+    let ev = translate_key(press(KeyCode::Char('c'), KeyModifiers::CONTROL), &app);
+    assert_eq!(
+        ev,
+        AppEvent::Quit,
+        "Ctrl+C must escape the help overlay immediately"
+    );
+}
+
+#[test]
+fn render_clamps_right_scroll_when_exceeds_max() {
+    let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    app.right_scroll = u16::MAX;
+    let _ = render_to_buffer(&mut app, 120, 15);
+    assert!(
+        app.right_scroll < u16::MAX,
+        "render should write back the clamped value: scroll = {}",
+        app.right_scroll
+    );
+    // Sanity check: clamped value should be small for a 30-arg config in a
+    // 15-row backend. We don't need the exact figure, only that it's no
+    // longer the sentinel.
+    assert!(
+        app.right_scroll < 1000,
+        "clamped scroll should be much smaller than u16::MAX: {}",
+        app.right_scroll
+    );
+}
+
+#[test]
+fn render_does_not_change_right_scroll_when_within_bounds() {
+    let mut app = App::new(vec![ok_entry_with_many_args("long", 30)]);
+    app.right_scroll = 0;
+    let _ = render_to_buffer(&mut app, 120, 15);
+    assert_eq!(
+        app.right_scroll, 0,
+        "render must not perturb an in-bounds scroll value"
+    );
+}
+
 #[test]
 fn render_status_bar_uses_bracket_style() {
-    let app = App::new(fixture_entries(1));
-    let buf = render_to_buffer(&app, 120, 24);
+    let mut app = App::new(fixture_entries(1));
+    let buf = render_to_buffer(&mut app, 120, 24);
     let s = buffer_to_string(&buf);
     assert!(s.contains("[q]"), "buffer: {}", s);
     assert!(s.contains("[Tab]"), "buffer: {}", s);
@@ -938,8 +985,8 @@ fn render_status_bar_uses_bracket_style() {
 fn render_status_bar_no_broken_count() {
     let mut entries = fixture_entries(1);
     entries.push(broken_entry("zbad"));
-    let app = App::new(entries);
-    let buf = render_to_buffer(&app, 120, 24);
+    let mut app = App::new(entries);
+    let buf = render_to_buffer(&mut app, 120, 24);
     // Status bar is the last row.
     let status_row = buffer_row_to_string(&buf, 23);
     assert!(
@@ -951,8 +998,8 @@ fn render_status_bar_no_broken_count() {
 
 #[test]
 fn render_empty_state_still_has_top_bar() {
-    let app = App::new(vec![]);
-    let buf = render_to_buffer(&app, 80, 20);
+    let mut app = App::new(vec![]);
+    let buf = render_to_buffer(&mut app, 80, 20);
     let s = buffer_to_string(&buf);
     assert!(s.contains("0 configurations"), "buffer: {}", s);
 }

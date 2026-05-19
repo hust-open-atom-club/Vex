@@ -16,7 +16,7 @@ use ratatui::{
 
 use super::app::App;
 
-pub(crate) fn draw(f: &mut Frame, app: &App) {
+pub(crate) fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     let chunks = Layout::default()
@@ -38,6 +38,7 @@ pub(crate) fn draw(f: &mut Frame, app: &App) {
             .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
             .split(chunks[1]);
         left_pane::render(f, panes[0], app);
+        // Mutable borrow: right_pane clamps app.right_scroll content-aware.
         right_pane::render(f, panes[1], app);
     }
 

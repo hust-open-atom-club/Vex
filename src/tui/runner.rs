@@ -172,8 +172,10 @@ fn launch_selected_config(
 
 /// Thin forwarder; all rendering logic lives in `crate::tui::render`.
 /// Kept here so existing L2 snapshot tests in `src/tests/test_tui.rs`
-/// can keep using `crate::tui::runner::draw`.
-pub(crate) fn draw(f: &mut Frame, app: &App) {
+/// can keep using `crate::tui::runner::draw`. P4-5.4 widened the
+/// signature to `&mut App` so the right-pane render can clamp
+/// `app.right_scroll` back to a content-aware maximum.
+pub(crate) fn draw(f: &mut Frame, app: &mut App) {
     render::draw(f, app);
 }
 

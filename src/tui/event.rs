@@ -23,12 +23,13 @@ pub enum AppEvent {
 pub fn translate_key(key: crossterm::event::KeyEvent, app: &App) -> AppEvent {
     use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
-    // 1. Help overlay swallows everything except non-Press.
-    if app.show_help {
-        if key.kind == KeyEventKind::Press {
-            return AppEvent::DismissHelp;
-        }
-        return AppEvent::Noop;
+    // 1. Ctrl+C is ALWAYS Quit — must come before any mode/overlay swallow.
+    //    Kind::Press guard included so a Release event doesn't trigger Quit.
+    if key.kind == KeyEventKind::Press
+        && matches!(key.code, KeyCode::Char('c'))
+        && key.modifiers.contains(KeyModifiers::CONTROL)
+    {
+        return AppEvent::Quit;
     }
 
     // 2. KeyEventKind::Press guard (windows release/repeat dedup).
@@ -36,9 +37,9 @@ pub fn translate_key(key: crossterm::event::KeyEvent, app: &App) -> AppEvent {
         return AppEvent::Noop;
     }
 
-    // 3. Ctrl+C is always Quit.
-    if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
-        return AppEvent::Quit;
+    // 3. Help overlay swallows every remaining Press.
+    if app.show_help {
+        return AppEvent::DismissHelp;
     }
 
     // 4. Filtering with editable query: characters go into the query.
