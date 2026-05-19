@@ -1,6 +1,6 @@
 [package]
 name = "vex"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
@@ -16,6 +16,8 @@ tempfile = "3.23.0"
 thiserror = "2.0.18"
 sha2 = "0.10"
 ureq = { version = "2.10", features = ["tls"] }
+ratatui = "0.28"
+crossterm = "0.28"
 
 [dev-dependencies]
 proptest = "1.11.0"

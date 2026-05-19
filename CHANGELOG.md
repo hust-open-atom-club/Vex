@@ -5,6 +5,33 @@ All notable changes to Vex are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-17
+
+### Added
+- New `vex tui` subcommand: interactive terminal UI for browsing and
+  launching configurations.
+- Browse mode with two-pane layout (list + details, equivalent to
+  `vex print` for the right pane).
+- Keyboard navigation: j/k/↑↓ to move, g/G for first/last, Tab to
+  switch focus.
+- Right-pane scrolling for long configurations.
+- Filter mode (`/`): live substring filter on name + description.
+- Help overlay (`?`): in-TUI keybinding reference.
+- Refresh (`r`): re-scan configurations directory without leaving TUI.
+- Enter to launch QEMU; pre-flight resource validation prevents
+  terminal switch on missing files; status bar surfaces exit codes
+  and launch errors after return.
+- Panic hook restores terminal state on unexpected crashes.
+- Polished UI: top status bar with configuration counts, card-style
+  detail view, rounded borders, and bracket-style key hints.
+- Internal: `prepare_command` extracted from `exec_command` for
+  CLI/TUI reuse.
+
+### Internal
+- New dependencies: ratatui 0.28, crossterm 0.28 (no async runtime).
+- Test count: 308 → 386 (TUI L1 state-machine + L2 render snapshots
+  via TestBackend + L3 headless via `run_state_machine`).
+
 ## [0.3.2] - 2026-05-09
 
 ### Fixed

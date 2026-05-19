@@ -17,6 +17,34 @@ pub struct ExecArgs {
     pub full: bool,
 }
 
+#[derive(Debug)]
+pub struct PreparedCommand {
+    pub command: Command,
+    pub final_args: Vec<String>,
+}
+
+pub fn prepare_command(config: &QemuConfig, debug: bool) -> VexResult<PreparedCommand> {
+    let mut final_args = config.args.clone();
+
+    final_args = substitute_params(&final_args, |k| std::env::var(k).ok());
+
+    check_resource_files(&config.resources)?;
+    final_args = substitute_resources(&final_args, &config.resources)?;
+
+    if debug {
+        final_args.push("-s".to_string());
+        final_args.push("-S".to_string());
+    }
+
+    let mut command = Command::new(&config.qemu_bin);
+    command.args(&final_args);
+
+    Ok(PreparedCommand {
+        command,
+        final_args,
+    })
+}
+
 pub fn exec_command(name: String, debug: bool, full: bool) -> VexResult<()> {
     let config = load_config(&name)?;
 
@@ -35,22 +63,13 @@ pub fn exec_command(name: String, debug: bool, full: bool) -> VexResult<()> {
             _ => {}
         }
     }
-    let mut exec_args = config.args.clone();
 
-    exec_args = substitute_params(&exec_args, |k| std::env::var(k).ok());
+    let mut prepared = prepare_command(&config, debug)?;
 
-    check_resource_files(&config.resources)?;
-    exec_args = substitute_resources(&exec_args, &config.resources)?;
+    print_startup_message(&name, &config, &prepared.final_args, debug, full);
 
-    if debug {
-        exec_args.push("-s".to_string());
-        exec_args.push("-S".to_string());
-    }
-
-    print_startup_message(&name, &config, &exec_args, debug, full);
-
-    let status = Command::new(&config.qemu_bin)
-        .args(&exec_args)
+    let status = prepared
+        .command
         .status()
         .map_err(|e| VexError::QemuLaunchFailed {
             binary: config.qemu_bin.clone(),
