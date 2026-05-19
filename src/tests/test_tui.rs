@@ -971,6 +971,62 @@ fn render_does_not_change_right_scroll_when_within_bounds() {
     );
 }
 
+// --- P4-5.5: help overlay panic safety + filter zero-match suppression ---
+
+#[test]
+fn render_help_does_not_panic_on_tiny_terminal() {
+    let mut app = App {
+        show_help: true,
+        ..Default::default()
+    };
+    // 30×10 is well below the prior 40×12 lower bound — must not panic.
+    let _ = render_to_buffer(&mut app, 30, 10);
+}
+
+#[test]
+fn render_help_does_not_panic_on_huge_terminal() {
+    let mut app = App {
+        show_help: true,
+        ..Default::default()
+    };
+    // Sanity check the opposite extreme — width/height far above the
+    // hard ceilings. Must not panic and the overlay should render.
+    let _ = render_to_buffer(&mut app, 200, 80);
+}
+
+#[test]
+fn render_with_filter_zero_match_shows_no_match_message() {
+    // Build three entries whose qemu_bin is a distinctive string so we can
+    // assert the right pane does NOT leak its details when filtered to zero.
+    use crate::config::QemuConfig;
+    let entries: Vec<ConfigEntry> = (0..3)
+        .map(|i| ConfigEntry::Ok {
+            name: format!("alpha{}", i),
+            config: QemuConfig {
+                qemu_bin: "qemu-system-aarch64".to_string(),
+                args: vec![],
+                desc: None,
+                qemu_version: None,
+                resources: Default::default(),
+            },
+            path: std::path::PathBuf::from(format!("/tmp/alpha{}.json", i)),
+        })
+        .collect();
+    let mut app = App::new(entries);
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "xyzzz".to_string(),
+        accepted: true,
+    };
+    let buf = render_to_buffer(&mut app, 120, 24);
+    let s = buffer_to_string(&buf);
+    assert!(s.contains("No matching"), "expected hint in buffer: {}", s);
+    assert!(
+        !s.contains("qemu-system-aarch64"),
+        "right pane must not show details of filtered-out entries: {}",
+        s
+    );
+}
+
 #[test]
 fn render_status_bar_uses_bracket_style() {
     let mut app = App::new(fixture_entries(1));

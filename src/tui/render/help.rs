@@ -9,10 +9,13 @@ use crate::tui::app::App;
 use crate::tui::theme;
 
 pub(super) fn render(f: &mut Frame, full: Rect, _app: &App) {
-    let w = full.width.clamp(40, 64);
-    let h = full.height.clamp(12, 24);
-    let x = full.x + (full.width.saturating_sub(w)) / 2;
-    let y = full.y + (full.height.saturating_sub(h)) / 2;
+    // Only cap the upper bound. Skipping the lower bound prevents
+    // producing a Rect that exceeds the frame on tiny terminals — ratatui
+    // would panic inside `render_widget` when the rect overflows.
+    let w = full.width.min(64);
+    let h = full.height.min(24);
+    let x = full.x + full.width.saturating_sub(w) / 2;
+    let y = full.y + full.height.saturating_sub(h) / 2;
     let area = Rect::new(x, y, w, h);
 
     f.render_widget(Clear, area);
