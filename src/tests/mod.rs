@@ -1,6 +1,7 @@
 mod exec_tests;
 mod property_tests;
 pub mod test_cache;
+pub mod test_cli;
 pub mod test_completions;
 pub mod test_edit;
 pub mod test_error;
