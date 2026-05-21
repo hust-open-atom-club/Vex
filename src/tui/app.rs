@@ -1692,16 +1692,6 @@ impl App {
             self.set_error("Snippet name cannot be empty");
             return;
         }
-        // Check builtin collision FIRST — it's a more specific error than
-        // "invalid name characters" for users who typed a builtin name
-        // verbatim (e.g. "1G memory" — has a space, also a builtin).
-        if is_builtin_snippet_name(&name) {
-            self.set_error(format!(
-                "Cannot use builtin name '{}'. Choose a different name.",
-                name
-            ));
-            return;
-        }
         if let Err(e) = crate::config::validate_config_name(&name) {
             self.set_error(format!("Invalid name: {}", e));
             return;

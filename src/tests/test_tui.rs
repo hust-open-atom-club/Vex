@@ -2429,23 +2429,6 @@ fn snippet_edit_save_name_collision_sets_error() {
 }
 
 #[test]
-fn snippet_edit_save_builtin_name_sets_error() {
-    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = tempfile::tempdir().unwrap();
-    unsafe {
-        std::env::set_var("VEX_CONFIG_DIR", dir.path());
-    }
-    let mut app = enter_library_new();
-    for c in "1G memory".chars() {
-        app.handle_event(AppEvent::SnippetEditTextChar(c));
-    }
-    app.handle_event(AppEvent::SnippetEditSave);
-    assert!(app.library.as_ref().unwrap().edit.is_some());
-    let msg = app.last_message.as_ref().expect("error expected");
-    assert!(msg.text.contains("builtin name"));
-}
-
-#[test]
 fn snippet_edit_cancel_with_changes_enters_exit_confirm() {
     let mut app = enter_library_new();
     app.handle_event(AppEvent::SnippetEditTextChar('a'));
