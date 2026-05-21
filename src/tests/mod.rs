@@ -16,5 +16,6 @@ pub mod test_rename;
 pub mod test_resource;
 pub mod test_save;
 pub mod test_serde;
+pub mod test_snippets;
 pub mod test_tui;
 pub mod test_validation;

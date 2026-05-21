@@ -30,6 +30,7 @@ pub mod config;
 pub mod error;
 pub mod hub;
 pub mod remote;
+pub mod snippets;
 pub mod tui;
 pub mod utils;
 
