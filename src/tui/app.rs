@@ -1788,16 +1788,9 @@ impl App {
                 }
             }
             EditMode::Update { original_name } => {
-                if name != *original_name {
-                    if new_path.exists() {
-                        self.set_error(format!("Config '{}' already exists", name));
-                        return;
-                    }
-                    let old_path = config_dir.join(format!("{}.json", original_name));
-                    if let Err(e) = std::fs::remove_file(&old_path) {
-                        self.set_error(format!("Failed to remove old config: {}", e));
-                        return;
-                    }
+                if name != *original_name && new_path.exists() {
+                    self.set_error(format!("Config '{}' already exists", name));
+                    return;
                 }
             }
         }
@@ -1812,6 +1805,18 @@ impl App {
         if let Err(e) = std::fs::write(&new_path, json) {
             self.set_error(format!("Failed to write config: {}", e));
             return;
+        }
+        if let EditMode::Update { original_name } = &edit.mode {
+            if name != *original_name {
+                let old_path = config_dir.join(format!("{}.json", original_name));
+                if let Err(e) = std::fs::remove_file(&old_path) {
+                    self.set_error(format!(
+                        "Saved new config but failed to remove old: {}",
+                        e
+                    ));
+                    return;
+                }
+            }
         }
 
         let entry_name = name.clone();
