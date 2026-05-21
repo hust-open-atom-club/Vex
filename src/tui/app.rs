@@ -1384,10 +1384,7 @@ impl App {
                                     self.set_info(format!("Deleted '{}'", name));
                                 }
                                 Err(e) => {
-                                    self.set_error(format!(
-                                        "Failed to write snippets.json: {}",
-                                        e
-                                    ));
+                                    self.set_error(format!("Failed to write snippets.json: {}", e));
                                 }
                             }
                         }
@@ -1833,10 +1830,7 @@ impl App {
             if name != *original_name {
                 let old_path = config_dir.join(format!("{}.json", original_name));
                 if let Err(e) = std::fs::remove_file(&old_path) {
-                    self.set_error(format!(
-                        "Saved new config but failed to remove old: {}",
-                        e
-                    ));
+                    self.set_error(format!("Saved new config but failed to remove old: {}", e));
                     return;
                 }
             }
