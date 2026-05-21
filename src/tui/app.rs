@@ -1159,6 +1159,11 @@ impl App {
                 true
             }
             AppEvent::EditSave => {
+                // Commit any in-progress token edit so Ctrl+S from inside the
+                // token-edit overlay does not silently drop the buffered text.
+                if let Some(edit) = &mut self.edit {
+                    edit.commit_token_edit();
+                }
                 self.try_save_edit();
                 true
             }
@@ -1589,6 +1594,11 @@ impl App {
                 true
             }
             AppEvent::SnippetEditSave => {
+                // Commit any in-progress token edit so Ctrl+S from inside the
+                // token-edit overlay does not silently drop the buffered text.
+                if let Some(s) = self.active_snippet_edit_mut() {
+                    s.commit_token_edit();
+                }
                 self.try_save_snippet_edit();
                 true
             }
