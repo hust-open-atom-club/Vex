@@ -10,6 +10,22 @@ pub fn snippets_file() -> VexResult<PathBuf> {
     Ok(vex_root_dir()?.join("snippets.json"))
 }
 
+/// Pure migration step: rename `old` → `new` iff `new` doesn't exist
+/// and `old` does. Tested directly by the unit suite.
+pub(crate) fn migrate_snippets_if_needed(
+    old: &std::path::Path,
+    new: &std::path::Path,
+) -> VexResult<()> {
+    if !new.exists() && old.exists() {
+        std::fs::rename(old, new).map_err(|e| VexError::IoError {
+            path: old.to_path_buf(),
+            operation: "migrate snippets.json from configs/".to_string(),
+            source: e,
+        })?;
+    }
+    Ok(())
+}
+
 /// One-time migration of `~/.vex/configs/snippets.json` (0.4.1 GA) to
 /// `~/.vex/snippets.json`. Default mode only — env mode is a no-op
 /// because the two paths coincide.
@@ -20,14 +36,7 @@ fn migrate_legacy_snippets_path() -> VexResult<()> {
     }
     let new_path = snippets_file()?;
     let old_path = config_dir()?.join("snippets.json");
-    if !new_path.exists() && old_path.exists() {
-        std::fs::rename(&old_path, &new_path).map_err(|e| VexError::IoError {
-            path: old_path,
-            operation: "migrate snippets.json from configs/".to_string(),
-            source: e,
-        })?;
-    }
-    Ok(())
+    migrate_snippets_if_needed(&old_path, &new_path)
 }
 
 /// Load user snippets from disk.

@@ -2965,3 +2965,122 @@ fn edit_rename_collision_keeps_old_and_new_files() {
         "taken.json must be untouched by a rejected rename"
     );
 }
+
+// =========================================================================
+// P4-10.2: Codex Round 2 regression coverage
+// =========================================================================
+
+#[test]
+fn edit_save_commits_active_token_edit() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let mut app = App::new(vec![]);
+    app.handle_event(AppEvent::EnterEditNew);
+    for c in "vm".chars() {
+        app.handle_event(AppEvent::EditTextChar(c));
+    }
+    app.handle_event(AppEvent::EditFieldDown); // → QemuBin
+    for c in "/bin/true".chars() {
+        app.handle_event(AppEvent::EditTextChar(c));
+    }
+    // Jump straight to the Args field, open a token edit, type into it, and
+    // hit save WITHOUT first pressing Esc/Enter to commit the token.
+    app.handle_event(AppEvent::EditFieldDown); // → Description
+    app.handle_event(AppEvent::EditFieldDown); // → Args
+    app.handle_event(AppEvent::EditArgsAddEmpty);
+    for c in "-nographic".chars() {
+        app.handle_event(AppEvent::EditTokenChar(c));
+    }
+    app.handle_event(AppEvent::EditSave);
+
+    assert!(app.edit.is_none(), "save should close edit");
+    // Reload from disk to confirm the token text reached storage.
+    let written = std::fs::read_to_string(dir.path().join("vm.json")).unwrap();
+    assert!(
+        written.contains("-nographic"),
+        "saved config must contain the in-flight token: {}",
+        written
+    );
+}
+
+#[test]
+fn snippets_file_uses_vex_root_not_configs() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    // Env mode: snippets_file() must NOT include a "configs" component.
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let env_path = crate::snippets::snippets_file().unwrap();
+    assert_eq!(env_path, dir.path().join("snippets.json"));
+    assert!(
+        !env_path.components().any(|c| c.as_os_str() == "configs"),
+        "env mode snippets path must not nest under configs/: {:?}",
+        env_path
+    );
+
+    // Default mode: still ends with .vex/snippets.json (no configs/).
+    unsafe {
+        std::env::remove_var("VEX_CONFIG_DIR");
+    }
+    let default_path = crate::snippets::snippets_file().unwrap();
+    assert!(
+        default_path.ends_with(".vex/snippets.json"),
+        "default snippets path must be ~/.vex/snippets.json: {:?}",
+        default_path
+    );
+}
+
+#[test]
+fn snippets_migrate_from_legacy_configs_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = dir.path().join("configs").join("snippets.json");
+    let new = dir.path().join("snippets.json");
+    std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+    std::fs::write(&old, br#"{"schema_version":1,"snippets":[]}"#).unwrap();
+    assert!(!new.exists());
+
+    crate::snippets::storage::migrate_snippets_if_needed(&old, &new).unwrap();
+
+    assert!(new.exists(), "new path created by migration");
+    assert!(!old.exists(), "old path gone after rename");
+
+    // Second call is a no-op even though only `new` exists now.
+    crate::snippets::storage::migrate_snippets_if_needed(&old, &new).unwrap();
+    assert!(new.exists());
+}
+
+#[test]
+fn library_save_with_builtin_name_creates_override() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // "Cortex-A72" is the only builtin name that satisfies validate_config_name
+    // (no spaces). Typing it triggers the path the pre-Sub-3 guard rejected.
+    let mut app = enter_library_new();
+    for c in "Cortex-A72".chars() {
+        app.handle_event(AppEvent::SnippetEditTextChar(c));
+    }
+    app.handle_event(AppEvent::SnippetEditSave);
+
+    let lib = app.library.as_ref().expect("library still active");
+    assert!(lib.edit.is_none(), "save should close edit");
+    assert!(
+        lib.user_only.iter().any(|s| s.name == "Cortex-A72"),
+        "override must be present in user_only snapshot"
+    );
+    let content = std::fs::read_to_string(dir.path().join("snippets.json")).unwrap();
+    let parsed: crate::snippets::SnippetFile = serde_json::from_str(&content).unwrap();
+    assert!(
+        parsed.snippets.iter().any(|s| s.name == "Cortex-A72"),
+        "override must be persisted to disk: {}",
+        content
+    );
+    let msg = app.last_message.as_ref().expect("info expected");
+    assert_eq!(msg.kind, MessageKind::Info);
+}
