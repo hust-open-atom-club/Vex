@@ -1826,13 +1826,13 @@ impl App {
             self.set_error(format!("Failed to write config: {}", e));
             return;
         }
-        if let EditMode::Update { original_name } = &edit.mode {
-            if name != *original_name {
-                let old_path = config_dir.join(format!("{}.json", original_name));
-                if let Err(e) = std::fs::remove_file(&old_path) {
-                    self.set_error(format!("Saved new config but failed to remove old: {}", e));
-                    return;
-                }
+        if let EditMode::Update { original_name } = &edit.mode
+            && name != *original_name
+        {
+            let old_path = config_dir.join(format!("{}.json", original_name));
+            if let Err(e) = std::fs::remove_file(&old_path) {
+                self.set_error(format!("Saved new config but failed to remove old: {}", e));
+                return;
             }
         }
 
