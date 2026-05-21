@@ -1366,27 +1366,40 @@ impl App {
                     .as_mut()
                     .and_then(|lib| lib.delete_confirm.take().map(|c| c.snippet_name));
                 if let Some(name) = to_remove {
-                    let user_only: Vec<crate::snippets::Snippet> = self
+                    let mut user_only: Vec<crate::snippets::Snippet> = self
                         .library
                         .as_ref()
-                        .map(|lib| {
-                            lib.snippets
-                                .snippets
-                                .iter()
-                                .filter(|s| s.name != name && !is_builtin_snippet_name(&s.name))
-                                .cloned()
-                                .collect()
-                        })
+                        .map(|lib| lib.user_only.clone())
                         .unwrap_or_default();
-                    match crate::snippets::save_user_snippets(&user_only) {
-                        Ok(()) => {
-                            if let Some(lib) = &mut self.library {
-                                lib.snippets = SnippetsDrawerState::load();
+                    let pos = user_only.iter().position(|s| s.name == name);
+                    match pos {
+                        Some(idx) => {
+                            user_only.remove(idx);
+                            match crate::snippets::save_user_snippets(&user_only) {
+                                Ok(()) => {
+                                    if let Some(lib) = &mut self.library {
+                                        lib.user_only = user_only;
+                                        lib.snippets = SnippetsDrawerState::load();
+                                    }
+                                    self.set_info(format!("Deleted '{}'", name));
+                                }
+                                Err(e) => {
+                                    self.set_error(format!(
+                                        "Failed to write snippets.json: {}",
+                                        e
+                                    ));
+                                }
                             }
-                            self.set_info(format!("Deleted '{}'", name));
                         }
-                        Err(e) => {
-                            self.set_error(format!("Failed to write snippets.json: {}", e));
+                        None => {
+                            // Defensive: LibraryDeleteSelected already blocks
+                            // pure builtins before delete_confirm is set, so
+                            // this branch should be unreachable. Refuse the
+                            // operation rather than panic if the invariant
+                            // ever breaks.
+                            self.set_error(
+                                "Cannot delete built-in snippet; create an override to customize.",
+                            );
                         }
                     }
                 }
