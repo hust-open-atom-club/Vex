@@ -299,9 +299,7 @@ pub fn translate_key(key: crossterm::event::KeyEvent, app: &App) -> AppEvent {
                     // P4-10: token edit modal — takes precedence inside Args.
                     if edit.token_edit.is_some() {
                         return match (key.code, key.modifiers) {
-                            (KeyCode::Enter, _) | (KeyCode::Esc, _) => {
-                                AppEvent::EditTokenCommit
-                            }
+                            (KeyCode::Enter, _) | (KeyCode::Esc, _) => AppEvent::EditTokenCommit,
                             (KeyCode::Backspace, _) => AppEvent::EditTokenBackspace,
                             (KeyCode::Left, _) => AppEvent::EditTokenLeft,
                             (KeyCode::Right, _) => AppEvent::EditTokenRight,

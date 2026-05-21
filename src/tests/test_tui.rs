@@ -2695,13 +2695,7 @@ fn edit_token_char_input_modifies_buffer() {
     let mut app = enter_edit_args_field();
     app.handle_event(AppEvent::EditArgsEnterToken);
     app.handle_event(AppEvent::EditTokenChar('X'));
-    let token = app
-        .edit
-        .as_ref()
-        .unwrap()
-        .token_edit
-        .as_ref()
-        .unwrap();
+    let token = app.edit.as_ref().unwrap().token_edit.as_ref().unwrap();
     assert_eq!(token.value, "-mX");
 }
 
@@ -2722,13 +2716,7 @@ fn edit_token_backspace_deletes_from_buffer() {
     let mut app = enter_edit_args_field();
     app.handle_event(AppEvent::EditArgsEnterToken);
     app.handle_event(AppEvent::EditTokenBackspace);
-    let token = app
-        .edit
-        .as_ref()
-        .unwrap()
-        .token_edit
-        .as_ref()
-        .unwrap();
+    let token = app.edit.as_ref().unwrap().token_edit.as_ref().unwrap();
     assert_eq!(token.value, "-");
 }
 
