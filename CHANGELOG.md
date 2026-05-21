@@ -5,6 +5,42 @@ All notable changes to Vex are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-21
+
+### Added
+- **Snippet library system**: a curated set of 42 builtin QEMU argument
+  snippets (Memory, CPU, Machine, Storage, Network, Display, Debug,
+  Kernel) plus a `~/.vex/snippets.json` user library for custom entries.
+  User snippets merge with builtins, with user entries overriding by name.
+- **TUI Edit mode**: press `e` on a configuration to edit it in-place,
+  or `n` to create a new one. Fields: name, QEMU binary, description,
+  and args (with reorder, delete, add, and in-place token editing).
+  Resources remain CLI-managed.
+- **TUI Snippets drawer** (Edit mode, right pane): merged snippets
+  grouped by category with fold/unfold, filter, and `→` to insert into
+  the current args position.
+- **TUI Library mode** (`Ctrl+L`): full-screen snippet manager. Browse
+  every snippet with a details panel; press `n` / `e` / `d` to create,
+  edit, or delete user snippets. Persists to `~/.vex/snippets.json`
+  via atomic write (temp-file + rename).
+- **Args token editing**: in Edit mode and Library snippet edit, press
+  `Enter` on an arg to edit its string in place, or `a` to add a new
+  empty arg and immediately start editing it. `Enter` / `Esc` commit.
+
+### Changed
+- **Edit mode `Tab` semantics**: `Tab` switches between the Editor and
+  Snippets panes; field cycling within the Editor uses `↑` / `↓`. (Edit
+  mode is new in 0.4.1, so this is documented for completeness.)
+
+### Notes
+- Snippets file uses `schema_version: 1`. Forward-compatible
+  deserialization is planned for a later release.
+- Builtin snippets are read-only; `e` / `d` on a builtin shows a hint
+  pointing to `n` instead.
+- Carry-over from 0.4.0 development: help overlay is panic-safe on
+  tiny terminals, right-pane scroll clamps and writes back, Ctrl+C
+  always quits regardless of mode/overlay.
+
 ## [0.4.0] - 2026-05-17
 
 ### Added

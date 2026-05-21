@@ -52,6 +52,51 @@ press Enter to launch the selected configuration, and q or Esc to quit.
 Press `/` to filter the list by name or description. Type to refine,
 Enter to accept (keep filter active), or Esc to clear.
 
+### Edit mode
+
+Press `e` on a configuration to edit it, or `n` to create a new one.
+The Edit pane has four fields: name, QEMU binary, description, and args.
+
+- `Tab` switches between the Editor (left) and the Snippets drawer
+  (right).
+- `↑` / `↓` cycle fields in the Editor; in the Args field they navigate
+  rows. `←` / `→` move the cursor inside text fields.
+- In the Args field: `a` adds an empty arg and starts editing it,
+  `Enter` edits the currently-selected arg token, `J` / `K` reorder
+  args, `d` deletes the selected arg.
+- `Ctrl+S` saves and exits. `Esc` cancels (and prompts to confirm if
+  there are unsaved changes).
+
+### Snippets drawer
+
+The right pane of Edit mode shows the merged snippet library (builtin
++ user, ordered by category). Press `Tab` to focus it, then:
+
+- `↑` / `↓` to navigate, `Space` to fold/unfold a category.
+- `/` to filter, `→` to insert the selected snippet into the current
+  args position.
+
+### Library mode
+
+Press `Ctrl+L` from Browse mode to open the full-screen snippet
+manager. Browse all snippets with a details panel on the right; press
+`n` to create a new user snippet, `e` to edit the selected user
+snippet, `d` to delete it. Builtin snippets are read-only; `e` / `d`
+on a builtin shows a hint pointing to `n` instead. Saves persist to
+`~/.vex/snippets.json` via an atomic write.
+
+## Snippets system
+
+A **snippet** is a named, categorised piece of QEMU args. Vex ships
+with 42 builtin snippets across 8 categories (Memory, CPU, Machine,
+Storage, Network, Display, Debug, Kernel) covering the most common
+QEMU recipes. Users add their own via Library mode; the file lives at
+`$VEX_CONFIG_DIR/snippets.json` (default: `~/.vex/snippets.json`).
+
+User snippets merge with builtins by name: a user entry sharing a
+builtin's name overrides it in-place; user-only entries append at the
+end. Builtin entries are never written to the user file.
+
 ### Requirements
 
 - A terminal at least 100 columns wide is recommended.
@@ -71,6 +116,14 @@ Enter to accept (keep filter active), or Esc to clear.
 **Help overlay** — in-TUI keybinding reference:
 
 ![Help overlay](docs/screenshots/help.png)
+
+**Edit mode** — interactive configuration editor with snippets drawer:
+
+![Edit mode](docs/screenshots/edit-mode.png)
+
+**Library mode** — manage your snippet collection:
+
+![Library mode](docs/screenshots/library-mode.png)
 
 **Broken configuration** — visible error state with actionable hints:
 
