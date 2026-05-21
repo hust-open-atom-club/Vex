@@ -70,7 +70,9 @@ fn cli_no_subcommand_fails() {
     let output = vex_bin().command().output().unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-    assert!(stderr.contains("require") || stderr.contains("usage") || stderr.contains("subcommand"));
+    assert!(
+        stderr.contains("require") || stderr.contains("usage") || stderr.contains("subcommand")
+    );
 }
 
 #[test]
@@ -97,8 +99,14 @@ fn exec_default_output_hides_details() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Starting configuration"));
-    assert!(!stdout.contains("QEMU:"), "default exec should not show QEMU path");
-    assert!(!stdout.contains("Args:"), "default exec should not show Args");
+    assert!(
+        !stdout.contains("QEMU:"),
+        "default exec should not show QEMU path"
+    );
+    assert!(
+        !stdout.contains("Args:"),
+        "default exec should not show Args"
+    );
     assert!(stdout.contains("quiet-vm"));
 }
 
@@ -195,8 +203,14 @@ fn save_then_exec_without_flag_does_not_leak_path() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("secure-vm"));
-    assert!(!stdout.contains("/bin/true"), "default exec should not expose binary path");
-    assert!(!stdout.contains("512"), "default exec should not expose args");
+    assert!(
+        !stdout.contains("/bin/true"),
+        "default exec should not expose binary path"
+    );
+    assert!(
+        !stdout.contains("512"),
+        "default exec should not expose args"
+    );
 }
 
 #[test]
@@ -207,13 +221,7 @@ fn exec_with_description_shows_in_header() {
     vex_bin()
         .command()
         .env("VEX_CONFIG_DIR", &config_dir)
-        .args([
-            "save",
-            "desc-vm",
-            "-d",
-            "My development VM",
-            "/bin/true",
-        ])
+        .args(["save", "desc-vm", "-d", "My development VM", "/bin/true"])
         .output()
         .unwrap();
 
