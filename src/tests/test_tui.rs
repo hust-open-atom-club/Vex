@@ -1934,7 +1934,7 @@ fn render_snippets_drawer_user_badge() {
     // Inject a user snippet into the drawer state.
     let edit = app.edit.as_mut().unwrap();
     edit.snippets.snippets.push(crate::snippets::Snippet {
-        name: "my custom".to_string(),
+        name: "mycustom".to_string(),
         args: vec!["-X".to_string()],
         category: SnippetCategory::Debug,
         description: None,
@@ -2063,7 +2063,7 @@ fn library_edit_user_snippet_opens_edit() {
     let file = crate::snippets::SnippetFile {
         schema_version: crate::snippets::SnippetFile::CURRENT_VERSION,
         snippets: vec![crate::snippets::Snippet {
-            name: "my custom".to_string(),
+            name: "mycustom".to_string(),
             args: vec!["-X".to_string()],
             category: crate::snippets::SnippetCategory::Debug,
             description: None,
@@ -2077,7 +2077,7 @@ fn library_edit_user_snippet_opens_edit() {
 
     let mut app = App::default();
     app.handle_event(AppEvent::EnterLibrary);
-    // Navigate to the "my custom" row — it's appended at the end (after
+    // Navigate to the "mycustom" row — it's appended at the end (after
     // 42 builtins). Headers are interleaved, so let's find it via the
     // drawer's visible rows.
     let lib = app.library.as_ref().unwrap();
@@ -2087,14 +2087,14 @@ fn library_edit_user_snippet_opens_edit() {
         .iter()
         .position(|r| {
             matches!(r, crate::tui::app::DrawerRow::Snippet { snippet_index }
-                if lib.snippets.snippets[*snippet_index].name == "my custom")
+                if lib.snippets.snippets[*snippet_index].name == "mycustom")
         })
         .expect("my custom should be visible");
     app.library.as_mut().unwrap().snippets.selected = target_idx;
     app.handle_event(AppEvent::LibraryEditSelected);
     let lib = app.library.as_ref().unwrap();
     let s = lib.edit.as_ref().expect("edit should be open");
-    assert_eq!(s.name.value, "my custom");
+    assert_eq!(s.name.value, "mycustom");
     assert!(matches!(s.mode, SnippetEditMode::Update { .. }));
 }
 
@@ -2805,5 +2805,180 @@ fn render_top_bar_library_to_edit_transition() {
         s.contains("Editing new snippet"),
         "stats should reflect snippet edit: {}",
         s
+    );
+}
+
+// =========================================================================
+// P4-10.1: Codex Round 1 regression coverage
+// =========================================================================
+
+/// Seed snippets.json with two overrides whose names collide with builtins
+/// plus one pure user entry. Reused by the save / delete regression tests.
+fn seed_overrides_and_pure_user(dir: &std::path::Path) {
+    let file = crate::snippets::SnippetFile {
+        schema_version: crate::snippets::SnippetFile::CURRENT_VERSION,
+        snippets: vec![
+            crate::snippets::Snippet {
+                name: "1G memory".to_string(),
+                args: vec!["-m".to_string(), "1024M".to_string()],
+                category: crate::snippets::SnippetCategory::Memory,
+                description: Some("override-1g".to_string()),
+            },
+            crate::snippets::Snippet {
+                name: "4G memory".to_string(),
+                args: vec!["-m".to_string(), "4096M".to_string()],
+                category: crate::snippets::SnippetCategory::Memory,
+                description: Some("override-4g".to_string()),
+            },
+            crate::snippets::Snippet {
+                name: "mycustom".to_string(),
+                args: vec!["-X".to_string()],
+                category: crate::snippets::SnippetCategory::Debug,
+                description: None,
+            },
+        ],
+    };
+    std::fs::write(
+        dir.join("snippets.json"),
+        serde_json::to_string(&file).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn library_save_edit_preserves_other_overrides() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    seed_overrides_and_pure_user(dir.path());
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    // Edit the *pure user* entry. Pre-fix, save_snippet_edits rebuilt the
+    // user list by filtering merged through is_builtin_snippet_name, so the
+    // two builtin-name overrides would silently vanish after this save.
+    let target = crate::snippets::Snippet {
+        name: "mycustom".to_string(),
+        args: vec!["-X".to_string()],
+        category: crate::snippets::SnippetCategory::Debug,
+        description: Some("updated".to_string()),
+    };
+    let edit = crate::tui::app::SnippetEditState::from_snippet(&target);
+    app.library.as_mut().unwrap().edit = Some(edit);
+    app.handle_event(AppEvent::SnippetEditSave);
+
+    let content = std::fs::read_to_string(dir.path().join("snippets.json")).unwrap();
+    let parsed: crate::snippets::SnippetFile = serde_json::from_str(&content).unwrap();
+    let names: Vec<&str> = parsed.snippets.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        names.contains(&"1G memory"),
+        "builtin-name override must survive an unrelated save: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"4G memory"),
+        "builtin-name override must survive an unrelated save: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"mycustom"),
+        "edited entry must remain: {:?}",
+        names
+    );
+    let edited = parsed
+        .snippets
+        .iter()
+        .find(|s| s.name == "mycustom")
+        .unwrap();
+    assert_eq!(edited.description.as_deref(), Some("updated"));
+}
+
+#[test]
+fn library_delete_preserves_other_overrides() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    seed_overrides_and_pure_user(dir.path());
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    // Bypass navigation: stage delete_confirm directly. snippet_index is
+    // unused by the handler post-Sub-3 (lookup is by name).
+    app.library.as_mut().unwrap().delete_confirm = Some(DeleteConfirm {
+        snippet_index: 0,
+        snippet_name: "1G memory".to_string(),
+    });
+    app.handle_event(AppEvent::LibraryDeleteConfirm);
+
+    let content = std::fs::read_to_string(dir.path().join("snippets.json")).unwrap();
+    let parsed: crate::snippets::SnippetFile = serde_json::from_str(&content).unwrap();
+    let names: Vec<&str> = parsed.snippets.iter().map(|s| s.name.as_str()).collect();
+    assert!(
+        !names.contains(&"1G memory"),
+        "deleted entry must be gone: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"4G memory"),
+        "other override must be preserved: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"mycustom"),
+        "pure user entry must be preserved: {:?}",
+        names
+    );
+}
+
+/// Sub-4 fallback A: collision-rejection preserves both files. Verifies the
+/// "rename rejected → old preserved" invariant on the Update path without
+/// having to mock a write failure.
+#[test]
+fn edit_rename_collision_keeps_old_and_new_files() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // Two pre-existing configs: we'll try to rename "old" → "taken".
+    write_config_file(dir.path(), "old", "/bin/true");
+    let taken_marker = r#"{"qemu_bin":"/bin/marker","args":[],"desc":null,"qemu_version":null}"#;
+    std::fs::write(dir.path().join("taken.json"), taken_marker).unwrap();
+
+    let entries = vec![ConfigEntry::Ok {
+        name: "old".to_string(),
+        config: crate::config::QemuConfig {
+            qemu_bin: "/bin/true".to_string(),
+            args: vec![],
+            desc: None,
+            qemu_version: None,
+            resources: Default::default(),
+        },
+        path: dir.path().join("old.json"),
+    }];
+    let mut app = App::new(entries);
+    app.handle_event(AppEvent::EnterEditExisting);
+    while app.edit.as_ref().unwrap().name.cursor > 0 {
+        app.handle_event(AppEvent::EditTextBackspace);
+    }
+    for c in "taken".chars() {
+        app.handle_event(AppEvent::EditTextChar(c));
+    }
+    app.handle_event(AppEvent::EditSave);
+
+    // Edit stays open with an error; both files survive untouched.
+    assert!(app.edit.is_some(), "edit must stay open on collision");
+    let msg = app.last_message.as_ref().expect("error expected");
+    assert_eq!(msg.kind, MessageKind::Error);
+    assert!(msg.text.contains("already exists"), "got: {}", msg.text);
+    assert!(dir.path().join("old.json").exists(), "old file preserved");
+    let surviving = std::fs::read_to_string(dir.path().join("taken.json")).unwrap();
+    assert_eq!(
+        surviving, taken_marker,
+        "taken.json must be untouched by a rejected rename"
     );
 }
