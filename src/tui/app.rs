@@ -570,14 +570,22 @@ pub struct LibraryState {
     pub snippets: SnippetsDrawerState,
     pub edit: Option<SnippetEditState>,
     pub delete_confirm: Option<DeleteConfirm>,
+    /// Snapshot of the on-disk user snippets list. The persistence baseline
+    /// for save/delete: we mutate this in place and write it back, instead
+    /// of reconstructing the user list by filtering merged snippets through
+    /// `is_builtin_snippet_name` (which would drop any user override whose
+    /// name collides with a builtin).
+    pub user_only: Vec<crate::snippets::Snippet>,
 }
 
 impl LibraryState {
     pub fn enter() -> Self {
+        let user_only = crate::snippets::load_user_snippets().unwrap_or_default();
         Self {
             snippets: SnippetsDrawerState::load(),
             edit: None,
             delete_confirm: None,
+            user_only,
         }
     }
 }
@@ -1679,17 +1687,16 @@ impl App {
             return;
         }
 
-        // Build the new user-only list.
-        let current: Vec<crate::snippets::Snippet> = self
+        // Mutate the on-disk user list snapshot. Looking up entries by the
+        // pre-edit name (original_name) is what lets renames work and is
+        // also what makes overrides whose name collides with a builtin
+        // survive a save — previously we filtered merged snippets through
+        // is_builtin_snippet_name and silently dropped them.
+        let mut user_only: Vec<crate::snippets::Snippet> = self
             .library
             .as_ref()
-            .map(|lib| lib.snippets.snippets.clone())
+            .map(|lib| lib.user_only.clone())
             .unwrap_or_default();
-        let mut user_only: Vec<crate::snippets::Snippet> = current
-            .iter()
-            .filter(|s| !is_builtin_snippet_name(&s.name))
-            .cloned()
-            .collect();
 
         let new_snippet = crate::snippets::Snippet {
             name: name.clone(),
@@ -1713,6 +1720,8 @@ impl App {
                 if let Some(pos) = user_only.iter().position(|s| s.name == *original_name) {
                     user_only[pos] = new_snippet;
                 } else {
+                    // Editing a builtin without an existing override creates
+                    // one — append it.
                     user_only.push(new_snippet);
                 }
             }
@@ -1721,6 +1730,7 @@ impl App {
         match crate::snippets::save_user_snippets(&user_only) {
             Ok(()) => {
                 if let Some(lib) = &mut self.library {
+                    lib.user_only = user_only;
                     lib.edit = None;
                     lib.snippets = SnippetsDrawerState::load();
                     let rows = lib.snippets.visible_rows();
