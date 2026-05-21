@@ -1,13 +1,33 @@
 use std::path::PathBuf;
 
 use super::types::{Snippet, SnippetFile};
-use crate::config::config_dir;
+use crate::config::{config_dir, vex_root_dir};
 use crate::error::{VexError, VexResult};
 
-/// Returns the user snippets file path: `$VEX_CONFIG_DIR/snippets.json`.
-/// Honors the `VEX_CONFIG_DIR` env var via the existing `config_dir()` helper.
+/// User snippets file at `<vex_root>/snippets.json`. Default mode:
+/// `~/.vex/snippets.json` (sibling to `configs/`).
 pub fn snippets_file() -> VexResult<PathBuf> {
-    Ok(config_dir()?.join("snippets.json"))
+    Ok(vex_root_dir()?.join("snippets.json"))
+}
+
+/// One-time migration of `~/.vex/configs/snippets.json` (0.4.1 GA) to
+/// `~/.vex/snippets.json`. Default mode only — env mode is a no-op
+/// because the two paths coincide.
+fn migrate_legacy_snippets_path() -> VexResult<()> {
+    let env_set = matches!(std::env::var("VEX_CONFIG_DIR"), Ok(v) if !v.is_empty());
+    if env_set {
+        return Ok(());
+    }
+    let new_path = snippets_file()?;
+    let old_path = config_dir()?.join("snippets.json");
+    if !new_path.exists() && old_path.exists() {
+        std::fs::rename(&old_path, &new_path).map_err(|e| VexError::IoError {
+            path: old_path,
+            operation: "migrate snippets.json from configs/".to_string(),
+            source: e,
+        })?;
+    }
+    Ok(())
 }
 
 /// Load user snippets from disk.
@@ -20,6 +40,7 @@ pub fn snippets_file() -> VexResult<PathBuf> {
 ///   crate::error::VexError; no new variant is introduced.)
 /// - `Err(VexError::IoError { .. })` on filesystem errors.
 pub fn load_user_snippets() -> VexResult<Vec<Snippet>> {
+    migrate_legacy_snippets_path()?;
     let path = snippets_file()?;
     if !path.exists() {
         return Ok(Vec::new());

@@ -29,6 +29,32 @@ pub fn config_dir() -> VexResult<PathBuf> {
     Ok(dir)
 }
 
+/// `$VEX_CONFIG_DIR` (non-empty) or `~/.vex`. Sibling to `configs/` in
+/// default mode; coincides with `config_dir()` in env mode — a P3 carry-
+/// over of the `VEX_CONFIG_DIR` double meaning, scheduled for 0.4.2.
+pub fn vex_root_dir() -> VexResult<PathBuf> {
+    let dir = match std::env::var("VEX_CONFIG_DIR") {
+        Ok(path) if !path.is_empty() => PathBuf::from(path),
+        _ => {
+            let home = dirs::home_dir().ok_or_else(|| VexError::IoError {
+                path: PathBuf::from("~"),
+                operation: "resolve home directory".to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "failed to get user home directory",
+                ),
+            })?;
+            home.join(".vex")
+        }
+    };
+    fs::create_dir_all(&dir).map_err(|e| VexError::IoError {
+        path: dir.clone(),
+        operation: "create vex root directory".to_string(),
+        source: e,
+    })?;
+    Ok(dir)
+}
+
 pub fn config_file(name: &str) -> VexResult<PathBuf> {
     let dir = config_dir()?;
     Ok(dir.join(format!("{}.json", name)))
