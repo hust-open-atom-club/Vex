@@ -362,8 +362,10 @@ fn render_snippets_list(f: &mut Frame, area: Rect, edit: &EditState) {
                 DrawerRow::Snippet { snippet_index } => {
                     let snippet = &edit.snippets.snippets[*snippet_index];
                     let indicator = if is_selected { "▸ " } else { "  " };
-                    let is_user_owned =
-                        edit.user_only_snippets.iter().any(|u| u.name == snippet.name);
+                    let is_user_owned = edit
+                        .user_only_snippets
+                        .iter()
+                        .any(|u| u.name == snippet.name);
                     let badge = if is_user_owned {
                         Span::styled(" [user]", Style::default().fg(theme::BADGE_LIBRARY_BG))
                     } else {

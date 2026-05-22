@@ -1873,4 +1873,3 @@ impl App {
         self.set_info(format!("Saved '{}'", entry_name));
     }
 }
-
