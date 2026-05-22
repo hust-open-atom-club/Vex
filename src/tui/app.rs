@@ -1320,8 +1320,7 @@ impl App {
                     .and_then(|lib| match lib.snippets.current_row()? {
                         DrawerRow::Snippet { snippet_index } => {
                             let s = lib.snippets.snippets.get(snippet_index)?.clone();
-                            let is_pure_builtin =
-                                !lib.user_only.iter().any(|u| u.name == s.name);
+                            let is_pure_builtin = !lib.user_only.iter().any(|u| u.name == s.name);
                             Some((s, is_pure_builtin))
                         }
                         DrawerRow::CategoryHeader { .. } => None,

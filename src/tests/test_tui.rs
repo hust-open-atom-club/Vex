@@ -3140,7 +3140,10 @@ fn library_edit_override_with_builtin_name_allowed() {
     assert_eq!(edit.name.value, "Cortex-A72");
     assert!(matches!(edit.mode, SnippetEditMode::Update { .. }));
     assert!(
-        !matches!(app.last_message.as_ref().map(|m| m.kind), Some(MessageKind::Error)),
+        !matches!(
+            app.last_message.as_ref().map(|m| m.kind),
+            Some(MessageKind::Error)
+        ),
         "must not error: {:?}",
         app.last_message
     );
@@ -3162,7 +3165,10 @@ fn library_delete_override_with_builtin_name_allowed() {
         .expect("delete confirm must open for an override with a builtin name");
     assert_eq!(confirm.snippet_name, "Cortex-A72");
     assert!(
-        !matches!(app.last_message.as_ref().map(|m| m.kind), Some(MessageKind::Error)),
+        !matches!(
+            app.last_message.as_ref().map(|m| m.kind),
+            Some(MessageKind::Error)
+        ),
         "must not error: {:?}",
         app.last_message
     );
