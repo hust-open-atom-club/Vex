@@ -1714,11 +1714,7 @@ impl App {
         // Read-only guard: same reasoning as LibraryDeleteConfirm. Leave the
         // edit overlay open so the user keeps their typing — only the disk
         // write is refused.
-        if let Some(err) = self
-            .library
-            .as_ref()
-            .and_then(|lib| lib.load_error.clone())
-        {
+        if let Some(err) = self.library.as_ref().and_then(|lib| lib.load_error.clone()) {
             self.set_error(format!(
                 "Cannot save: snippets.json failed to load ({}). \
                  Fix or remove the file, then reopen.",
