@@ -2,9 +2,11 @@
 //! All public entry is the [`draw`] dispatcher; submodule render fns are
 //! `pub(super)` and not visible outside this module tree.
 
+mod edit_pane;
 mod empty;
 mod help;
 mod left_pane;
+mod library_pane;
 mod right_pane;
 mod status_bar;
 mod top_bar;
@@ -34,7 +36,12 @@ pub(crate) fn draw(f: &mut Frame, app: &mut App) {
 
     top_bar::render(f, chunks[0], app);
 
-    if app.is_empty() {
+    if app.library.is_some() {
+        library_pane::render(f, chunks[1], app);
+    } else if app.edit.is_some() {
+        // Edit mode owns the full middle area.
+        edit_pane::render(f, chunks[1], app);
+    } else if app.is_empty() {
         empty::render_middle(f, chunks[1], app);
     } else if app.visible_indices().is_empty() {
         // Filter is active but no entry matches. Keep the left pane (so the

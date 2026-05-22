@@ -18,8 +18,17 @@ pub(super) fn render(f: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Compose left half (brand + stats) and right half (mode badge).
-    let badge_text = " BROWSE ";
+    let (badge_text, badge_style) = if let Some(lib) = &app.library {
+        if lib.edit.is_some() {
+            (" EDIT ", theme::badge_edit())
+        } else {
+            (" LIBRARY ", theme::badge_library())
+        }
+    } else if app.edit.is_some() {
+        (" EDIT ", theme::badge_edit())
+    } else {
+        (" BROWSE ", theme::badge_browse())
+    };
     let badge_width = badge_text.chars().count() as u16;
     let cols = Layout::default()
         .direction(Direction::Horizontal)
@@ -43,12 +52,53 @@ pub(super) fn render(f: &mut Frame, area: Rect, app: &App) {
     let para = Paragraph::new(Line::from(spans)).alignment(Alignment::Left);
     f.render_widget(para, cols[0]);
 
-    let badge = Paragraph::new(badge_text).style(theme::badge_browse());
+    let badge = Paragraph::new(badge_text).style(badge_style);
     f.render_widget(badge, cols[1]);
 }
 
 /// Build the inline "stats" run of spans shown after the brand.
 fn stats_spans(app: &App) -> Vec<Span<'static>> {
+    // Library mode replaces the entries stats with snippets stats.
+    if let Some(lib) = &app.library {
+        let bold = Style::default().add_modifier(Modifier::BOLD);
+        let dim = theme::dim_style();
+        let lib_color = Style::default()
+            .fg(theme::BADGE_LIBRARY_BG)
+            .add_modifier(Modifier::BOLD);
+
+        // Editing sub-mode → focused title.
+        if let Some(sedit) = &lib.edit {
+            let title = match &sedit.mode {
+                crate::tui::app::SnippetEditMode::Create => "Editing new snippet".to_string(),
+                crate::tui::app::SnippetEditMode::Update { original_name } => {
+                    format!("Editing snippet '{}'", original_name)
+                }
+            };
+            return vec![Span::styled(title, dim)];
+        }
+
+        let total = lib.snippets.snippets.len();
+        let user = lib
+            .snippets
+            .snippets
+            .iter()
+            .filter(|s| lib.user_only.iter().any(|u| u.name == s.name))
+            .count();
+        let builtin = total - user;
+        return vec![
+            Span::styled(total.to_string(), bold),
+            Span::raw(" "),
+            Span::styled("snippets", dim),
+            Span::styled("  ·  ", dim),
+            Span::styled(builtin.to_string(), bold),
+            Span::raw(" "),
+            Span::styled("builtin", dim),
+            Span::styled("  ·  ", dim),
+            Span::styled(user.to_string(), lib_color),
+            Span::raw(" "),
+            Span::styled("user", dim),
+        ];
+    }
     let total = app.entries.len();
     let ok = app
         .entries
