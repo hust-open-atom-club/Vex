@@ -330,11 +330,6 @@ fn render_snippets_list(f: &mut Frame, area: Rect, edit: &EditState) {
     let drawer_focused = edit.focus == EditFocus::SnippetsDrawer;
     let selected = edit.snippets.selected;
 
-    let builtin_names: std::collections::HashSet<String> = crate::snippets::builtin_snippets()
-        .into_iter()
-        .map(|s| s.name)
-        .collect();
-
     let items: Vec<ListItem> = rows
         .iter()
         .enumerate()
@@ -367,10 +362,12 @@ fn render_snippets_list(f: &mut Frame, area: Rect, edit: &EditState) {
                 DrawerRow::Snippet { snippet_index } => {
                     let snippet = &edit.snippets.snippets[*snippet_index];
                     let indicator = if is_selected { "▸ " } else { "  " };
-                    let badge = if builtin_names.contains(&snippet.name) {
-                        Span::styled(" [builtin]", theme::dim_style())
-                    } else {
+                    let is_user_owned =
+                        edit.user_only_snippets.iter().any(|u| u.name == snippet.name);
+                    let badge = if is_user_owned {
                         Span::styled(" [user]", Style::default().fg(theme::BADGE_LIBRARY_BG))
+                    } else {
+                        Span::styled(" [builtin]", theme::dim_style())
                     };
                     let line = Line::from(vec![
                         Span::styled("    ", theme::dim_style()),

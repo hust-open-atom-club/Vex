@@ -1931,14 +1931,20 @@ fn render_snippets_drawer_user_badge() {
     };
     let mut app = App::new(vec![entry]);
     app.handle_event(AppEvent::EnterEditExisting);
-    // Inject a user snippet into the drawer state.
+    // Inject a user snippet into the drawer state. Post-P4-10.4, the badge
+    // classifier reads user_only_snippets (membership), so we mirror the
+    // injection there to keep the fixture internally consistent — pushing
+    // only into the merged list would have produced a phantom "user" row
+    // that no on-disk source backs.
     let edit = app.edit.as_mut().unwrap();
-    edit.snippets.snippets.push(crate::snippets::Snippet {
+    let injected = crate::snippets::Snippet {
         name: "mycustom".to_string(),
         args: vec!["-X".to_string()],
         category: SnippetCategory::Debug,
         description: None,
-    });
+    };
+    edit.snippets.snippets.push(injected.clone());
+    edit.user_only_snippets.push(injected);
     let buf = render_to_buffer(&mut app, 140, 60);
     let s = buffer_to_string(&buf);
     assert!(s.contains("[user]"), "expected user badge: {}", s);

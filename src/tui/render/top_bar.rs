@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 
-use crate::tui::app::{App, BrowseSubMode, is_builtin_snippet_name};
+use crate::tui::app::{App, BrowseSubMode};
 use crate::tui::scan::ConfigEntry;
 use crate::tui::theme;
 
@@ -78,13 +78,13 @@ fn stats_spans(app: &App) -> Vec<Span<'static>> {
         }
 
         let total = lib.snippets.snippets.len();
-        let builtin = lib
+        let user = lib
             .snippets
             .snippets
             .iter()
-            .filter(|s| is_builtin_snippet_name(&s.name))
+            .filter(|s| lib.user_only.iter().any(|u| u.name == s.name))
             .count();
-        let user = total - builtin;
+        let builtin = total - user;
         return vec![
             Span::styled(total.to_string(), bold),
             Span::raw(" "),

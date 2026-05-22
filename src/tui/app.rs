@@ -319,6 +319,11 @@ pub struct EditState {
     pub focus: EditFocus,
     /// Snippets drawer state.
     pub snippets: SnippetsDrawerState,
+    /// Snapshot of the on-disk user snippets list, used by render to
+    /// classify drawer rows as `[user]` vs `[builtin]` by membership
+    /// rather than by name (so overrides whose name collides with a
+    /// builtin still render as user-owned).
+    pub user_only_snippets: Vec<crate::snippets::Snippet>,
     /// When `Some`, the currently-selected arg in the Args field is being
     /// edited in place via a TextField overlay. Set by `EditArgsAddEmpty`
     /// or `EditArgsEnterToken`; committed back to `args[args_selected]`
@@ -353,6 +358,7 @@ impl EditState {
             exit_confirm: None,
             focus: EditFocus::Editor,
             snippets: SnippetsDrawerState::load(),
+            user_only_snippets: crate::snippets::load_user_snippets().unwrap_or_default(),
             token_edit: None,
             preserved_resources: config.resources.clone(),
             preserved_qemu_version: config.qemu_version.clone(),
@@ -376,6 +382,7 @@ impl EditState {
             exit_confirm: None,
             focus: EditFocus::Editor,
             snippets: SnippetsDrawerState::load(),
+            user_only_snippets: crate::snippets::load_user_snippets().unwrap_or_default(),
             token_edit: None,
             preserved_resources: std::collections::HashMap::new(),
             preserved_qemu_version: None,
@@ -1867,11 +1874,3 @@ impl App {
     }
 }
 
-/// Returns true if the given name matches a built-in snippet. P4-9 uses
-/// this to gate edit/delete operations and to filter the user-only set
-/// before persistence.
-pub(crate) fn is_builtin_snippet_name(name: &str) -> bool {
-    crate::snippets::builtin_snippets()
-        .iter()
-        .any(|s| s.name == name)
-}

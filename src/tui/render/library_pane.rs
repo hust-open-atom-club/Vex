@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::tui::app::{
     App, DrawerRow, LibraryState, SnippetEditField, SnippetEditMode, SnippetEditState,
-    SnippetsDrawerState, TextField, is_builtin_snippet_name,
+    SnippetsDrawerState, TextField,
 };
 use crate::tui::theme;
 
@@ -67,7 +67,7 @@ fn render_left_tree(f: &mut Frame, area: Rect, lib: &LibraryState) {
         render_filter_input(f, layout[1], &lib.snippets.filter.query);
         let sep: String = "─".repeat(layout[2].width as usize);
         f.render_widget(Paragraph::new(sep).style(theme::dim_style()), layout[2]);
-        render_drawer_list(f, layout[3], &lib.snippets, focused);
+        render_drawer_list(f, layout[3], &lib.snippets, &lib.user_only, focused);
     } else {
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -77,7 +77,7 @@ fn render_left_tree(f: &mut Frame, area: Rect, lib: &LibraryState) {
                 Constraint::Length(1),
             ])
             .split(inner);
-        render_drawer_list(f, layout[1], &lib.snippets, focused);
+        render_drawer_list(f, layout[1], &lib.snippets, &lib.user_only, focused);
     }
 }
 
@@ -90,7 +90,13 @@ fn render_filter_input(f: &mut Frame, area: Rect, query: &TextField) {
     f.render_widget(Paragraph::new(line), area);
 }
 
-fn render_drawer_list(f: &mut Frame, area: Rect, drawer: &SnippetsDrawerState, focused: bool) {
+fn render_drawer_list(
+    f: &mut Frame,
+    area: Rect,
+    drawer: &SnippetsDrawerState,
+    user_only: &[crate::snippets::Snippet],
+    focused: bool,
+) {
     let rows = drawer.visible_rows();
     if rows.is_empty() {
         let msg = if drawer.snippets.is_empty() {
@@ -137,10 +143,11 @@ fn render_drawer_list(f: &mut Frame, area: Rect, drawer: &SnippetsDrawerState, f
                 DrawerRow::Snippet { snippet_index } => {
                     let snippet = &drawer.snippets[*snippet_index];
                     let indicator = if is_selected { "▸ " } else { "  " };
-                    let badge = if is_builtin_snippet_name(&snippet.name) {
-                        Span::styled(" [builtin]", theme::dim_style())
-                    } else {
+                    let is_user_owned = user_only.iter().any(|u| u.name == snippet.name);
+                    let badge = if is_user_owned {
                         Span::styled(" [user]", Style::default().fg(theme::BADGE_LIBRARY_BG))
+                    } else {
+                        Span::styled(" [builtin]", theme::dim_style())
                     };
                     ListItem::new(Line::from(vec![
                         Span::styled("    ", theme::dim_style()),
@@ -197,7 +204,7 @@ fn render_right_detail(f: &mut Frame, area: Rect, lib: &LibraryState) {
         f.render_widget(p, area);
         return;
     };
-    let is_builtin = is_builtin_snippet_name(&snippet.name);
+    let is_builtin = !lib.user_only.iter().any(|u| u.name == snippet.name);
 
     let mut lines: Vec<Line<'static>> = vec![
         Line::from(""),
