@@ -3196,3 +3196,130 @@ fn library_edit_pure_builtin_still_blocked() {
         .expect("error message expected for pure builtin");
     assert_eq!(msg.kind, MessageKind::Error);
 }
+
+// =========================================================================
+// P4-10.4: Override data-flow regression coverage
+// =========================================================================
+
+#[test]
+fn validate_snippet_name_accepts_spaces_and_punctuation() {
+    use crate::snippets::validate_snippet_name;
+    assert!(validate_snippet_name("1G memory").is_ok());
+    assert!(validate_snippet_name("no graphics").is_ok());
+    assert!(validate_snippet_name("Cortex-A72").is_ok());
+    assert!(validate_snippet_name("hello, world!").is_ok());
+
+    assert!(validate_snippet_name("").is_err());
+    assert!(validate_snippet_name("   ").is_err());
+    let long_name = "x".repeat(65);
+    assert!(validate_snippet_name(&long_name).is_err());
+    assert!(validate_snippet_name("name\nwith\nnewline").is_err());
+    assert!(validate_snippet_name("tab\there").is_err());
+    assert!(validate_snippet_name("nul\0byte").is_err());
+}
+
+/// THE space-named-builtin override test. Pre-P4-10.4 this would fail
+/// at try_save_snippet_edit because validate_config_name rejects spaces,
+/// even though "1G memory" is a perfectly valid snippet name on disk.
+/// Using "1G memory" here — NOT Cortex-A72 — is the whole point: it
+/// closes the blind spot the prior round only happened to skirt.
+#[test]
+fn library_save_override_for_space_named_builtin() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let mut app = enter_library_new();
+    for c in "1G memory".chars() {
+        app.handle_event(AppEvent::SnippetEditTextChar(c));
+    }
+    app.handle_event(AppEvent::SnippetEditSave);
+
+    let lib = app.library.as_ref().expect("library still active");
+    assert!(lib.edit.is_none(), "save should close edit");
+    assert!(
+        lib.user_only.iter().any(|s| s.name == "1G memory"),
+        "override must be in user_only snapshot"
+    );
+    let content = std::fs::read_to_string(dir.path().join("snippets.json")).unwrap();
+    let parsed: crate::snippets::SnippetFile = serde_json::from_str(&content).unwrap();
+    assert!(
+        parsed.snippets.iter().any(|s| s.name == "1G memory"),
+        "override must be persisted to disk: {}",
+        content
+    );
+    let msg = app.last_message.as_ref().expect("info expected");
+    assert_eq!(msg.kind, MessageKind::Info, "expected info, got {:?}", msg);
+}
+
+#[test]
+fn library_override_renders_as_user_not_builtin() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let file = crate::snippets::SnippetFile {
+        schema_version: crate::snippets::SnippetFile::CURRENT_VERSION,
+        snippets: vec![crate::snippets::Snippet {
+            name: "1G memory".to_string(),
+            args: vec!["-m".to_string(), "1024M".to_string()],
+            category: crate::snippets::SnippetCategory::Memory,
+            description: Some("user override".to_string()),
+        }],
+    };
+    std::fs::write(
+        dir.path().join("snippets.json"),
+        serde_json::to_string(&file).unwrap(),
+    )
+    .unwrap();
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    let lib = app.library.as_ref().unwrap();
+    let snippet = lib
+        .snippets
+        .snippets
+        .iter()
+        .find(|s| s.name == "1G memory")
+        .expect("override visible in merged list");
+    let is_user_owned = lib.user_only.iter().any(|u| u.name == snippet.name);
+    assert!(
+        is_user_owned,
+        "membership classifier must mark the override as user-owned"
+    );
+}
+
+#[test]
+fn library_pure_builtin_renders_as_builtin() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let file = crate::snippets::SnippetFile {
+        schema_version: crate::snippets::SnippetFile::CURRENT_VERSION,
+        snippets: vec![],
+    };
+    std::fs::write(
+        dir.path().join("snippets.json"),
+        serde_json::to_string(&file).unwrap(),
+    )
+    .unwrap();
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    let lib = app.library.as_ref().unwrap();
+    let snippet = lib
+        .snippets
+        .snippets
+        .iter()
+        .find(|s| s.name == "no graphics")
+        .expect("pure builtin must be present in merged list");
+    let is_user_owned = lib.user_only.iter().any(|u| u.name == snippet.name);
+    assert!(
+        !is_user_owned,
+        "pure builtin must not be classified as user-owned"
+    );
+}
