@@ -1700,7 +1700,7 @@ impl App {
             self.set_error("Snippet name cannot be empty");
             return;
         }
-        if let Err(e) = crate::config::validate_config_name(&name) {
+        if let Err(e) = crate::snippets::validate_snippet_name(&name) {
             self.set_error(format!("Invalid name: {}", e));
             return;
         }
