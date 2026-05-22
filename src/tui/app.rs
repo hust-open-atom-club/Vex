@@ -1866,6 +1866,14 @@ impl App {
                     .iter()
                     .position(|e| e.name() == entry_name)
                     .unwrap_or(0);
+                // Mirror the Refresh handler: when a filter is active, the
+                // saved entry may no longer match the query (e.g. after a
+                // rename), so the position above would land on a hidden row.
+                // reselect_after_filter_change clamps selection back into
+                // the visible set using the same rule as Refresh.
+                if matches!(self.browse_sub, BrowseSubMode::Filtering { .. }) {
+                    self.reselect_after_filter_change();
+                }
             }
             Err(e) => {
                 self.set_error(format!("Saved but rescan failed: {}", e));
