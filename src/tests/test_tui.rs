@@ -3198,6 +3198,115 @@ fn library_edit_pure_builtin_still_blocked() {
 }
 
 // =========================================================================
+// P4-10.5: Edit config-save regression coverage
+// =========================================================================
+
+#[test]
+fn config_save_strips_empty_args() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // Pre-existing config with two real args.
+    let original = crate::config::QemuConfig {
+        qemu_bin: "/bin/true".to_string(),
+        args: vec!["-m".to_string(), "1G".to_string()],
+        desc: None,
+        qemu_version: None,
+        resources: Default::default(),
+    };
+    let json = serde_json::to_string_pretty(&original).unwrap();
+    std::fs::write(dir.path().join("myvm.json"), json).unwrap();
+    let entries = vec![ConfigEntry::Ok {
+        name: "myvm".to_string(),
+        config: original.clone(),
+        path: dir.path().join("myvm.json"),
+    }];
+
+    let mut app = App::new(entries);
+    app.handle_event(AppEvent::EnterEditExisting);
+    // Navigate to the Args field and add an empty token (overlay opens but
+    // we do not type into it — the user "abandoned" the new row).
+    app.handle_event(AppEvent::EditFieldDown); // → QemuBin
+    app.handle_event(AppEvent::EditFieldDown); // → Description
+    app.handle_event(AppEvent::EditFieldDown); // → Args
+    app.handle_event(AppEvent::EditArgsAddEmpty);
+    // EditSave commits the empty token_edit into args first (P4-10.2 Sub-1)
+    // and then try_save_edit strips empties (Sub-1 of this round).
+    app.handle_event(AppEvent::EditSave);
+
+    let written = std::fs::read_to_string(dir.path().join("myvm.json")).unwrap();
+    let parsed: crate::config::QemuConfig = serde_json::from_str(&written).unwrap();
+    assert!(
+        !parsed.args.iter().any(|a| a.is_empty()),
+        "saved config must not contain empty arg tokens: {:?}",
+        parsed.args
+    );
+    assert!(
+        parsed.args.contains(&"-m".to_string()) && parsed.args.contains(&"1G".to_string()),
+        "real args must survive the strip: {:?}",
+        parsed.args
+    );
+}
+
+#[test]
+fn edit_save_reselects_within_active_filter() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // Three sibling configs whose names share the "cfg-" prefix.
+    for n in ["cfg-a", "cfg-b", "cfg-c"] {
+        write_config_file(dir.path(), n, "/bin/true");
+    }
+    let make_entry = |n: &str| ConfigEntry::Ok {
+        name: n.to_string(),
+        config: crate::config::QemuConfig {
+            qemu_bin: "/bin/true".to_string(),
+            args: vec![],
+            desc: None,
+            qemu_version: None,
+            resources: Default::default(),
+        },
+        path: dir.path().join(format!("{}.json", n)),
+    };
+    let mut app = App::new(vec![make_entry("cfg-a"), make_entry("cfg-b"), make_entry("cfg-c")]);
+    // Activate filter "cfg-" (matches all three), select cfg-b.
+    app.browse_sub = BrowseSubMode::Filtering {
+        query: "cfg-".to_string(),
+        accepted: true,
+    };
+    app.selected = 1;
+    app.handle_event(AppEvent::EnterEditExisting);
+    // Wipe name and rename to "renamed-x" — no longer matches "cfg-".
+    while app.edit.as_ref().unwrap().name.cursor > 0 {
+        app.handle_event(AppEvent::EditTextBackspace);
+    }
+    for c in "renamed-x".chars() {
+        app.handle_event(AppEvent::EditTextChar(c));
+    }
+    app.handle_event(AppEvent::EditSave);
+
+    // Post-save: entries are cfg-a, cfg-c, renamed-x (scan sorts by name).
+    // visible_indices under "cfg-" = positions of cfg-a (0) and cfg-c (1).
+    // Selection must be one of those — never the hidden renamed-x slot.
+    let visible = app.visible_indices();
+    assert!(
+        !visible.is_empty(),
+        "fixture sanity: cfg-a and cfg-c should still match the filter"
+    );
+    assert!(
+        visible.contains(&app.selected),
+        "selection {} must land on a visible row; visible={:?}, entries={:?}",
+        app.selected,
+        visible,
+        app.entries.iter().map(|e| e.name()).collect::<Vec<_>>()
+    );
+}
+
+// =========================================================================
 // P4-10.4: Override data-flow regression coverage
 // =========================================================================
 
