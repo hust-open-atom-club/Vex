@@ -3084,3 +3084,103 @@ fn library_save_with_builtin_name_creates_override() {
     let msg = app.last_message.as_ref().expect("info expected");
     assert_eq!(msg.kind, MessageKind::Info);
 }
+
+// =========================================================================
+// P4-10.3: Override-manageability regression coverage
+// =========================================================================
+
+/// Seed snippets.json with one override whose name collides with a builtin
+/// (Cortex-A72 — the one builtin name that round-trips through
+/// validate_config_name). Returns the entered App.
+fn enter_library_with_cortex_override(dir: &std::path::Path) -> App {
+    let file = crate::snippets::SnippetFile {
+        schema_version: crate::snippets::SnippetFile::CURRENT_VERSION,
+        snippets: vec![crate::snippets::Snippet {
+            name: "Cortex-A72".to_string(),
+            args: vec!["-cpu".to_string(), "custom".to_string()],
+            category: crate::snippets::SnippetCategory::Cpu,
+            description: Some("user override".to_string()),
+        }],
+    };
+    std::fs::write(
+        dir.join("snippets.json"),
+        serde_json::to_string(&file).unwrap(),
+    )
+    .unwrap();
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    let lib = app.library.as_ref().unwrap();
+    let target_idx = lib
+        .snippets
+        .visible_rows()
+        .iter()
+        .position(|r| {
+            matches!(r, crate::tui::app::DrawerRow::Snippet { snippet_index }
+                if lib.snippets.snippets[*snippet_index].name == "Cortex-A72")
+        })
+        .expect("Cortex-A72 row visible");
+    app.library.as_mut().unwrap().snippets.selected = target_idx;
+    app
+}
+
+#[test]
+fn library_edit_override_with_builtin_name_allowed() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let mut app = enter_library_with_cortex_override(dir.path());
+    app.handle_event(AppEvent::LibraryEditSelected);
+    let lib = app.library.as_ref().unwrap();
+    let edit = lib
+        .edit
+        .as_ref()
+        .expect("edit must open for an override with a builtin name");
+    assert_eq!(edit.name.value, "Cortex-A72");
+    assert!(matches!(edit.mode, SnippetEditMode::Update { .. }));
+    assert!(
+        !matches!(app.last_message.as_ref().map(|m| m.kind), Some(MessageKind::Error)),
+        "must not error: {:?}",
+        app.last_message
+    );
+}
+
+#[test]
+fn library_delete_override_with_builtin_name_allowed() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let mut app = enter_library_with_cortex_override(dir.path());
+    app.handle_event(AppEvent::LibraryDeleteSelected);
+    let lib = app.library.as_ref().unwrap();
+    let confirm = lib
+        .delete_confirm
+        .as_ref()
+        .expect("delete confirm must open for an override with a builtin name");
+    assert_eq!(confirm.snippet_name, "Cortex-A72");
+    assert!(
+        !matches!(app.last_message.as_ref().map(|m| m.kind), Some(MessageKind::Error)),
+        "must not error: {:?}",
+        app.last_message
+    );
+}
+
+#[test]
+fn library_edit_pure_builtin_still_blocked() {
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    // Default selection is the Memory header (row 0); move down to first
+    // Memory snippet ("512M memory"), a pure builtin with no override.
+    app.handle_event(AppEvent::SnippetsDrawerDown);
+    app.handle_event(AppEvent::LibraryEditSelected);
+    let lib = app.library.as_ref().unwrap();
+    assert!(lib.edit.is_none(), "edit must NOT open for a pure builtin");
+    let msg = app
+        .last_message
+        .as_ref()
+        .expect("error message expected for pure builtin");
+    assert_eq!(msg.kind, MessageKind::Error);
+}
