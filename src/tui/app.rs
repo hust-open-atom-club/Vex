@@ -1793,9 +1793,13 @@ impl App {
         } else {
             Some(edit.description.value.trim().to_string())
         };
+        // Mirror snippet-save's strip rule (is_empty, not trim().is_empty)
+        // so an Args-list row left empty via EditArgsAddEmpty doesn't end
+        // up in the saved JSON as a "" token that would break launch.
+        let args: Vec<String> = edit.args.iter().filter(|a| !a.is_empty()).cloned().collect();
         let config = QemuConfig {
             qemu_bin,
-            args: edit.args.clone(),
+            args,
             desc: description,
             qemu_version: edit.preserved_qemu_version.clone(),
             resources: edit.preserved_resources.clone(),
