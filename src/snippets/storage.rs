@@ -101,6 +101,9 @@ pub fn save_user_snippets(snippets: &[Snippet]) -> VexResult<()> {
         operation: "write snippets.json (tmp)".to_string(),
         source: e,
     })?;
+    // POSIX: atomic replace. Windows replace-safety pending (0.4.2, needs
+    // ReplaceFileW; tempfile::persist is not atomic on Windows either, and
+    // a remove-then-rename pattern would widen the data-loss window).
     std::fs::rename(&tmp, &path).map_err(|e| VexError::IoError {
         path: path.clone(),
         operation: "rename snippets.json".to_string(),

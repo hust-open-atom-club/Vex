@@ -583,16 +583,26 @@ pub struct LibraryState {
     /// `is_builtin_snippet_name` (which would drop any user override whose
     /// name collides with a builtin).
     pub user_only: Vec<crate::snippets::Snippet>,
+    /// `Some(msg)` when load_user_snippets failed at enter() with a real
+    /// error (file exists but is corrupt JSON or IO-broken; a missing file
+    /// is not an error). When set, every Library write path is blocked at
+    /// its handler entry — we must NOT write an empty `user_only` baseline
+    /// over the user's on-disk data while the file is unreadable.
+    pub load_error: Option<String>,
 }
 
 impl LibraryState {
     pub fn enter() -> Self {
-        let user_only = crate::snippets::load_user_snippets().unwrap_or_default();
+        let (user_only, load_error) = match crate::snippets::load_user_snippets() {
+            Ok(v) => (v, None),
+            Err(e) => (Vec::new(), Some(format!("{}", e))),
+        };
         Self {
             snippets: SnippetsDrawerState::load(),
             edit: None,
             delete_confirm: None,
             user_only,
+            load_error,
         }
     }
 }
@@ -1299,7 +1309,16 @@ impl App {
             }
             // --- P4-9: Library mode entry / exit ----------------------
             AppEvent::EnterLibrary => {
-                self.library = Some(LibraryState::enter());
+                let state = LibraryState::enter();
+                let load_err = state.load_error.clone();
+                self.library = Some(state);
+                if let Some(err) = load_err {
+                    self.set_error(format!(
+                        "Library is read-only: snippets.json failed to load ({}). \
+                         Fix or remove the file, then reopen.",
+                        err
+                    ));
+                }
                 true
             }
             AppEvent::ExitLibrary => {
@@ -1381,6 +1400,21 @@ impl App {
                 true
             }
             AppEvent::LibraryDeleteConfirm => {
+                // Read-only guard: if snippets.json failed to load at enter(),
+                // user_only is an empty baseline that does NOT reflect disk.
+                // Writing it back would destroy the user's data. Clear the
+                // confirm modal so the UI escapes, but never call save.
+                if let Some(lib) = &mut self.library
+                    && let Some(err) = lib.load_error.clone()
+                {
+                    lib.delete_confirm = None;
+                    self.set_error(format!(
+                        "Cannot delete: snippets.json failed to load ({}). \
+                         Fix or remove the file, then reopen.",
+                        err
+                    ));
+                    return true;
+                }
                 let to_remove: Option<String> = self
                     .library
                     .as_mut()
@@ -1677,6 +1711,21 @@ impl App {
     /// reloads the drawer on success; leaves edit open with an error
     /// message on failure.
     fn try_save_snippet_edit(&mut self) {
+        // Read-only guard: same reasoning as LibraryDeleteConfirm. Leave the
+        // edit overlay open so the user keeps their typing — only the disk
+        // write is refused.
+        if let Some(err) = self
+            .library
+            .as_ref()
+            .and_then(|lib| lib.load_error.clone())
+        {
+            self.set_error(format!(
+                "Cannot save: snippets.json failed to load ({}). \
+                 Fix or remove the file, then reopen.",
+                err
+            ));
+            return;
+        }
         type SaveSnapshot = (
             String,
             crate::snippets::SnippetCategory,
