@@ -3272,7 +3272,11 @@ fn edit_save_reselects_within_active_filter() {
         },
         path: dir.path().join(format!("{}.json", n)),
     };
-    let mut app = App::new(vec![make_entry("cfg-a"), make_entry("cfg-b"), make_entry("cfg-c")]);
+    let mut app = App::new(vec![
+        make_entry("cfg-a"),
+        make_entry("cfg-b"),
+        make_entry("cfg-c"),
+    ]);
     // Activate filter "cfg-" (matches all three), select cfg-b.
     app.browse_sub = BrowseSubMode::Filtering {
         query: "cfg-".to_string(),
