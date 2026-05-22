@@ -1307,14 +1307,22 @@ impl App {
                 true
             }
             AppEvent::LibraryEditSelected => {
+                // A merged row is "manageable" when an entry with the same name
+                // exists in user_only — i.e. it is either a pure user snippet
+                // or an override of a builtin. Pure builtins (no override yet)
+                // are blocked so the user is nudged to create an override
+                // explicitly. Classifying by name vs. the builtin set is wrong
+                // because it would also block overrides whose name collides
+                // with a builtin.
                 let target: Option<(crate::snippets::Snippet, bool)> = self
                     .library
                     .as_ref()
                     .and_then(|lib| match lib.snippets.current_row()? {
                         DrawerRow::Snippet { snippet_index } => {
                             let s = lib.snippets.snippets.get(snippet_index)?.clone();
-                            let is_builtin = is_builtin_snippet_name(&s.name);
-                            Some((s, is_builtin))
+                            let is_pure_builtin =
+                                !lib.user_only.iter().any(|u| u.name == s.name);
+                            Some((s, is_pure_builtin))
                         }
                         DrawerRow::CategoryHeader { .. } => None,
                     });
@@ -1341,8 +1349,9 @@ impl App {
                         .and_then(|lib| match lib.snippets.current_row()? {
                             DrawerRow::Snippet { snippet_index } => {
                                 let s = lib.snippets.snippets.get(snippet_index)?.clone();
-                                let is_builtin = is_builtin_snippet_name(&s.name);
-                                Some((snippet_index, s.name, is_builtin))
+                                let is_pure_builtin =
+                                    !lib.user_only.iter().any(|u| u.name == s.name);
+                                Some((snippet_index, s.name, is_pure_builtin))
                             }
                             DrawerRow::CategoryHeader { .. } => None,
                         });
