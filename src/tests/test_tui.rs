@@ -3436,3 +3436,119 @@ fn library_pure_builtin_renders_as_builtin() {
         "pure builtin must not be classified as user-owned"
     );
 }
+
+// =========================================================================
+// P4-10.6: Library load-error read-only guard regression coverage
+// =========================================================================
+
+#[test]
+fn library_enter_with_corrupt_snippets_is_readonly() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // Garbage that snippets.json's serde_json::from_str will reject.
+    std::fs::write(dir.path().join("snippets.json"), b"{ not valid json").unwrap();
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    let lib = app.library.as_ref().expect("library should be active");
+    assert!(
+        lib.load_error.is_some(),
+        "corrupt snippets.json must populate load_error"
+    );
+    assert!(
+        lib.user_only.is_empty(),
+        "user_only must stay empty when load fails"
+    );
+    let msg = app.last_message.as_ref().expect("error message expected");
+    assert_eq!(msg.kind, MessageKind::Error);
+    assert!(
+        msg.text.contains("read-only"),
+        "user-facing message must explain read-only state: {}",
+        msg.text
+    );
+}
+
+/// THE data-safety regression. Without the read-only guard, save_snippet_edits
+/// would have written an empty `user_only` baseline back to disk, wiping the
+/// (currently corrupt but recoverable) file. This test asserts the disk
+/// content survives the attempted save byte-for-byte.
+#[test]
+fn library_save_blocked_after_load_error_preserves_disk() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    let original_bytes: &[u8] = b"{ not valid json BUT MIGHT BE THE USER'S BACKUP";
+    std::fs::write(dir.path().join("snippets.json"), original_bytes).unwrap();
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    assert!(
+        app.library.as_ref().unwrap().load_error.is_some(),
+        "fixture sanity: load_error must be set"
+    );
+
+    // Open the snippet editor and type a valid override name, then save.
+    app.handle_event(AppEvent::LibraryNew);
+    for c in "Cortex-A72".chars() {
+        app.handle_event(AppEvent::SnippetEditTextChar(c));
+    }
+    app.handle_event(AppEvent::SnippetEditSave);
+
+    // The save must have been refused with a user-facing error.
+    let msg = app.last_message.as_ref().expect("error expected");
+    assert_eq!(msg.kind, MessageKind::Error);
+    assert!(
+        msg.text.contains("snippets.json"),
+        "save error must mention the file: {}",
+        msg.text
+    );
+
+    // The hard guarantee: the original bytes on disk are untouched. If the
+    // guard ever regresses, save_user_snippets would have rewritten this
+    // file as `{"schema_version":1,"snippets":[...one entry...]}`.
+    let after = std::fs::read(dir.path().join("snippets.json")).unwrap();
+    assert_eq!(
+        after, original_bytes,
+        "snippets.json on disk must be byte-for-byte preserved when load failed"
+    );
+}
+
+#[test]
+fn library_enter_with_missing_file_is_writable() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    unsafe {
+        std::env::set_var("VEX_CONFIG_DIR", dir.path());
+    }
+    // No snippets.json on disk — fresh install. Must NOT trigger read-only.
+    assert!(!dir.path().join("snippets.json").exists());
+
+    let mut app = App::default();
+    app.handle_event(AppEvent::EnterLibrary);
+    {
+        let lib = app.library.as_ref().expect("library active");
+        assert!(
+            lib.load_error.is_none(),
+            "missing file must not produce a load_error"
+        );
+    }
+
+    // Save path should succeed end-to-end.
+    app.handle_event(AppEvent::LibraryNew);
+    for c in "Cortex-A72".chars() {
+        app.handle_event(AppEvent::SnippetEditTextChar(c));
+    }
+    app.handle_event(AppEvent::SnippetEditSave);
+    let lib = app.library.as_ref().unwrap();
+    assert!(
+        lib.user_only.iter().any(|s| s.name == "Cortex-A72"),
+        "fresh-install save must succeed"
+    );
+    let msg = app.last_message.as_ref().expect("info expected");
+    assert_eq!(msg.kind, MessageKind::Info, "got: {:?}", msg);
+}
