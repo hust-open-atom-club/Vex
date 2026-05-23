@@ -25,6 +25,16 @@ QEMU recipes get typed (and mistyped) every day.
 
 ## Installation
 
+Install the `vex` binary into `~/.cargo/bin` (already on `PATH` for a
+standard Rust setup):
+
+```bash
+cargo install --path .
+vex tui
+```
+
+Or build without installing — the binary lands at `target/release/vex`:
+
 ```bash
 cargo build --release
 ```
