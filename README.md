@@ -54,9 +54,15 @@ vex exec my-vm
 Team — push to a Git registry, pull elsewhere:
 
 ```bash
+# Publisher: create a config, then push it
 export VEX_REMOTE_URL=git@github.com:my-team/vex-registry.git
-vex push team/dev-box:v1 dev-box      # publisher
-vex pull team/dev-box:v1              # teammate
+vex save dev-box qemu-system-aarch64 -m 4G
+vex push team/dev-box:v1 dev-box
+
+# Teammate: pull and run
+export VEX_REMOTE_URL=git@github.com:my-team/vex-registry.git
+vex pull team/dev-box:v1
+vex exec dev-box
 ```
 
 Public — install from a Vex Hub (see [Vex Hub](#vex-hub)):
