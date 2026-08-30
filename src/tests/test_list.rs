@@ -102,6 +102,42 @@ fn test_list_multiple_configs() {
 }
 
 #[test]
+fn test_list_sorts_configs_by_name() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+
+    let vex_bin = CargoBuild::new()
+        .bin("vex")
+        .current_release()
+        .run()
+        .unwrap();
+
+    for name in ["zeta", "Alpha", "beta"] {
+        vex_bin
+            .command()
+            .env("VEX_CONFIG_DIR", &config_dir)
+            .args(["save", name, "qemu-system-x86_64"])
+            .output()
+            .unwrap();
+    }
+
+    let output = vex_bin
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .arg("list")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let alpha = stdout.find("  Alpha -").unwrap();
+    let beta = stdout.find("  beta -").unwrap();
+    let zeta = stdout.find("  zeta -").unwrap();
+    assert!(alpha < beta && beta < zeta, "{stdout}");
+}
+
+#[test]
 fn test_list_shows_descriptions() {
     let temp_dir = TempDir::new().unwrap();
     let config_dir = temp_dir.path().join(".vex");
