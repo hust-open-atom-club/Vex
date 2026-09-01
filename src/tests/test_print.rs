@@ -66,6 +66,85 @@ fn print_full_output_format() {
 }
 
 #[test]
+fn print_shows_sorted_resources_and_metadata() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let sha256 = "a".repeat(64);
+    let config = serde_json::json!({
+        "qemu_bin": "qemu-system-x86_64",
+        "args": ["-m", "2G"],
+        "resources": {
+            "z_disk": {
+                "path": "/images/disk.qcow2",
+                "kind": "image",
+                "sha256": sha256,
+                "size": 4096,
+                "url": "https://example.com/disk.qcow2"
+            },
+            "a_firmware": {
+                "path": "/firmware/uefi.bin",
+                "kind": "firmware"
+            }
+        }
+    });
+    std::fs::write(
+        config_dir.join("resources.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "resources"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Resources:"));
+    assert!(stdout.contains("a_firmware  [Firmware]"));
+    assert!(stdout.contains("path:   /firmware/uefi.bin"));
+    assert!(stdout.contains("sha256: (none)"));
+    assert!(stdout.contains("size:   (unknown)"));
+    assert!(stdout.contains("url:    (none)"));
+    assert!(stdout.contains("z_disk  [Image]"));
+    assert!(stdout.contains("path:   /images/disk.qcow2"));
+    assert!(stdout.contains(&format!("sha256: {}", "a".repeat(64))));
+    assert!(stdout.contains("size:   4096 bytes"));
+    assert!(stdout.contains("url:    https://example.com/disk.qcow2"));
+    assert!(stdout.find("a_firmware").unwrap() < stdout.find("z_disk").unwrap());
+}
+
+#[test]
+fn print_shows_empty_resources_state() {
+    let temp_dir = TempDir::new().unwrap();
+    let config_dir = temp_dir.path().join(".vex");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let config = serde_json::json!({
+        "qemu_bin": "qemu-system-x86_64",
+        "args": []
+    });
+    std::fs::write(
+        config_dir.join("empty.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+
+    let output = vex_bin()
+        .command()
+        .env("VEX_CONFIG_DIR", &config_dir)
+        .args(["print", "empty"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Resources:\n  (none)"));
+}
+
+#[test]
 fn print_no_description() {
     let temp_dir = TempDir::new().unwrap();
     let config_dir = temp_dir.path().join(".vex");
