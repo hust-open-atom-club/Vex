@@ -188,8 +188,12 @@ _vex() {{
                 "pull:Pull a shared configuration from the remote registry"
                 "push:Push a local configuration to the remote registry"
                 "exec:Execute a saved QEMU configuration"
-                "edit:Edit a saved QEMU configuration"
                 "completions:Generate shell completion scripts"
+                "edit:Edit a saved QEMU configuration"
+                "resource:Manage resources bound to a configuration"
+                "cache:Manage the resource cache"
+                "hub:Browse and install entries from the Vex Hub"
+                "tui:Launch the interactive TUI"
             )
             _describe -t commands 'vex command' cmds
             ;;

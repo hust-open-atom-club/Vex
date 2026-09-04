@@ -1,4 +1,7 @@
+use clap::CommandFactory;
 use escargot::CargoBuild;
+
+use crate::commands::Cli;
 
 fn vex_bin() -> escargot::CargoRun {
     CargoBuild::new()
@@ -30,6 +33,36 @@ fn completions_zsh() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("vex") || stdout.contains("_vex"));
+}
+
+#[test]
+fn zsh_dynamic_completion_lists_all_cli_subcommands() {
+    let output = vex_bin()
+        .command()
+        .args(["completions", "zsh"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let command_block = stdout
+        .split("cmds=(")
+        .nth(1)
+        .and_then(|rest| rest.split_once("\n            )\n"))
+        .map(|(block, _)| block)
+        .expect("Zsh dynamic completion command block");
+    let actual: Vec<_> = command_block
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix('"'))
+        .filter_map(|line| line.split(':').next())
+        .map(str::to_owned)
+        .collect();
+    let expected: Vec<_> = Cli::command()
+        .get_subcommands()
+        .map(|command| command.get_name().to_owned())
+        .collect();
+
+    assert_eq!(actual, expected);
 }
 
 #[test]
