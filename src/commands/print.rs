@@ -35,6 +35,35 @@ pub fn print_command(name: String) -> VexResult<()> {
         }
     }
     println!();
+    println!("Resources:");
+    if config.resources.is_empty() {
+        println!("  (none)");
+    } else {
+        let mut keys: Vec<&String> = config.resources.keys().collect();
+        keys.sort();
+        for key in keys {
+            let resource = &config.resources[key];
+            println!("  {}  [{:?}]", key, resource.kind);
+            println!("    path:   {}", resource.path);
+            println!(
+                "    sha256: {}",
+                resource.sha256.as_deref().unwrap_or("(none)")
+            );
+            println!(
+                "    size:   {}",
+                resource
+                    .size
+                    .map(|size| format!("{} bytes", size))
+                    .unwrap_or_else(|| "(unknown)".into())
+            );
+            println!(
+                "    url:    {}",
+                resource.url.as_deref().unwrap_or("(none)")
+            );
+            println!();
+        }
+    }
+    println!();
 
     println!("Full Command:");
     let full_command = format!("{} {}", config.qemu_bin, config.args.join(" "));
