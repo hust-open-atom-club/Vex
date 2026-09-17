@@ -44,6 +44,8 @@ pub fn list_command() -> VexResult<()> {
         }
     }
 
+    configs.sort_by(|a, b| a.0.cmp(&b.0));
+
     if configs.is_empty() {
         println!("No configurations found.");
     } else {
